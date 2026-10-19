@@ -132,6 +132,24 @@ export function panelRoutes(store: Store, config: AppConfig): Router {
     }
   });
 
+  r.delete('/panels/:id', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      if (req.user!.role !== 'admin') throw new HttpError(403, 'forbidden', 'Administrator access required');
+      const deleted = await store.deletePanel(req.params.id);
+      if (!deleted) throw new HttpError(404, 'not_found', 'Panel not found');
+      await store.audit({
+        actor_id: req.user!.id,
+        action: 'panel_deleted',
+        entity_type: 'panel',
+        entity_id: req.params.id,
+        details: {},
+      });
+      res.json({ ok: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // ---- Panel verification codes (admin) ---------------------------------
   r.get('/panels/:id/codes', requireAuth, async (req: AuthedRequest, res, next) => {
     try {

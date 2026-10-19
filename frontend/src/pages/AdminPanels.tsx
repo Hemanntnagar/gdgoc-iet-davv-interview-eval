@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/Ui';
@@ -33,6 +33,7 @@ export function AdminPanels() {
   const [users, setUsers] = useState<{ id: string; email: string; full_name: string; role: string }[]>([]);
   const [confirmRotate, setConfirmRotate] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<{ panel: PanelRow; member: PanelMember } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<PanelRow | null>(null);
 
   const load = useCallback(async () => {
     const token = await getToken();
@@ -169,6 +170,21 @@ export function AdminPanels() {
     await load();
   };
 
+  const deletePanel = async () => {
+    if (!confirmDelete) return;
+    const token = await getToken();
+    if (!token) return;
+    try {
+      await api(`/panels/${confirmDelete.id}`, { method: 'DELETE', token });
+      if (codesPanel?.id === confirmDelete.id) setCodesPanel(null);
+      setNotice(`${confirmDelete.name} was permanently deleted.`);
+      setConfirmDelete(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to delete panel');
+    }
+  };
+
   return (
     <>
       <h1>Panels &amp; verification codes</h1>
@@ -198,139 +214,144 @@ export function AdminPanels() {
       </div>
 
       {panels.map((panel) => (
-        <div className="card" key={panel.id}>
-          <div className="head" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-            <h3 style={{ margin: 0 }}>{panel.name}</h3>
-            <span className={`badge ${panel.is_active ? 'ok' : 'err'}`}>
-              {panel.is_active ? 'active' : 'inactive'}
-            </span>
-          </div>
-          <p className="muted">
-            Expected evaluations per candidate: {panel.expected_evaluations} ·{' '}
-            {panel.members.length} judge(s)
-          </p>
-          <ul>
-            {panel.members.map((m) => (
-              <li key={m.judge_id}>
-                {m.judge_name || m.judge_id}{' '}
-                {m.verified_at ? <span className="badge ok">verified</span> : <span className="badge blue">assigned</span>}{' '}
-                <button
-                  className="btn danger small"
-                  onClick={() => setConfirmRemove({ panel, member: m })}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-            {panel.members.length === 0 && <li className="muted">No judges assigned.</li>}
-          </ul>
-          <div className="filters">
-            <div style={{ flex: 1 }}>
-              <label>Assign registered judge by email</label>
-              <input
-                value={judgeEmail}
-                onChange={(e) => setJudgeEmail(e.target.value)}
-                placeholder="judge@example.com"
-                list="judge-emails"
-              />
-              <datalist id="judge-emails">
-                {users.map((u) => (
-                  <option key={u.id} value={u.email}>
-                    {u.full_name}
-                  </option>
-                ))}
-              </datalist>
+        <Fragment key={panel.id}>
+          <div className="card">
+            <div className="head" style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h3 style={{ margin: 0 }}>{panel.name}</h3>
+              <span className={`badge ${panel.is_active ? 'ok' : 'err'}`}>
+                {panel.is_active ? 'active' : 'inactive'}
+              </span>
             </div>
-            <button className="btn secondary" onClick={() => void assignJudge(panel)}>
-              Assign
-            </button>
-            <button className="btn secondary" onClick={() => void openCodes(panel)}>
-              Verification codes
-            </button>
-            <button
-              className="btn secondary"
-              onClick={() => {
-                void (async () => {
-                  const token = await getToken();
-                  if (!token) return;
-                  await api(`/panels/${panel.id}`, {
-                    method: 'PATCH',
-                    token,
-                    body: JSON.stringify({ is_active: !panel.is_active }),
-                  });
-                  await load();
-                })().catch((e) => setError(e instanceof Error ? e.message : 'Update failed'));
-              }}
-            >
-              {panel.is_active ? 'Deactivate' : 'Activate'}
-            </button>
+            <p className="muted">
+              Expected evaluations per candidate: {panel.expected_evaluations} ·{' '}
+              {panel.members.length} judge(s)
+            </p>
+            <ul>
+              {panel.members.map((m) => (
+                <li key={m.judge_id}>
+                  {m.judge_name || m.judge_id}{' '}
+                  {m.verified_at ? <span className="badge ok">verified</span> : <span className="badge blue">assigned</span>}{' '}
+                  <button
+                    className="btn danger small"
+                    onClick={() => setConfirmRemove({ panel, member: m })}
+                  >
+                    Remove
+                  </button>
+                </li>
+              ))}
+              {panel.members.length === 0 && <li className="muted">No judges assigned.</li>}
+            </ul>
+            <div className="filters">
+              <div style={{ flex: 1 }}>
+                <label>Assign registered judge by email</label>
+                <input
+                  value={judgeEmail}
+                  onChange={(e) => setJudgeEmail(e.target.value)}
+                  placeholder="judge@example.com"
+                  list="judge-emails"
+                />
+                <datalist id="judge-emails">
+                  {users.map((u) => (
+                    <option key={u.id} value={u.email}>
+                      {u.full_name}
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+              <button className="btn secondary" onClick={() => void assignJudge(panel)}>
+                Assign
+              </button>
+              <button className="btn secondary" onClick={() => void openCodes(panel)}>
+                Verification codes
+              </button>
+              <button
+                className="btn secondary"
+                onClick={() => {
+                  void (async () => {
+                    const token = await getToken();
+                    if (!token) return;
+                    await api(`/panels/${panel.id}`, {
+                      method: 'PATCH',
+                      token,
+                      body: JSON.stringify({ is_active: !panel.is_active }),
+                    });
+                    await load();
+                  })().catch((e) => setError(e instanceof Error ? e.message : 'Update failed'));
+                }}
+              >
+                {panel.is_active ? 'Deactivate' : 'Activate'}
+              </button>
+              <button className="btn danger" onClick={() => setConfirmDelete(panel)}>
+                Delete panel
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
 
-      {codesPanel && (
-        <div className="card">
-          <h3>Codes — {codesPanel.name}</h3>
-          {plaintext && (
-            <div className="alert warn">
-              This code is shown <strong>once</strong>. Give it to the judges for this panel:{' '}
-              <strong className="mono" style={{ letterSpacing: '0.1em' }}>{plaintext}</strong>
+          {codesPanel?.id === panel.id && (
+            <div className="card">
+              <h3>Codes — {codesPanel.name}</h3>
+              {plaintext && (
+                <div className="alert warn">
+                  This code is shown <strong>once</strong>. Give it to the judges for this panel:{' '}
+                  <strong className="mono" style={{ letterSpacing: '0.1em' }}>{plaintext}</strong>
+                </div>
+              )}
+              <div className="filters">
+                <div>
+                  <label>Label (optional)</label>
+                  <input value={codeLabel} onChange={(e) => setCodeLabel(e.target.value)} />
+                </div>
+                <button className="btn" onClick={() => void createCode(false)}>
+                  New code
+                </button>
+                <button className="btn danger" onClick={() => setConfirmRotate(true)}>
+                  Rotate (revoke all current)
+                </button>
+                <button className="btn secondary" onClick={() => setCodesPanel(null)}>
+                  Close
+                </button>
+              </div>
+              <div className="table-wrap mt">
+                <table className="data">
+                  <thead>
+                    <tr>
+                      <SortableTh label="Preview" sortKey="preview" state={codeSort} />
+                      <SortableTh label="Label" sortKey="label" state={codeSort} />
+                      <SortableTh label="Status" sortKey="status" state={codeSort} />
+                      <SortableTh label="Failed attempts" sortKey="attempts" state={codeSort} />
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {codeSort.sorted.map((c) => (
+                      <tr key={c.id}>
+                        <td className="mono">{c.code_preview || '••••'}</td>
+                        <td>{c.label || '—'}</td>
+                        <td>
+                          {c.locked_until && new Date(c.locked_until) > new Date() ? (
+                            <span className="badge err">locked until {new Date(c.locked_until).toLocaleTimeString()}</span>
+                          ) : c.is_active ? (
+                            <span className="badge ok">active</span>
+                          ) : (
+                            <span className="badge neutral">inactive</span>
+                          )}
+                        </td>
+                        <td>{c.failed_attempts}</td>
+                        <td>
+                          <button className="btn secondary small" onClick={() => void toggleCode(c, !c.is_active)}>
+                            {c.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {codes.length === 0 && <div className="empty">No codes yet — create one.</div>}
+              </div>
             </div>
           )}
-          <div className="filters">
-            <div>
-              <label>Label (optional)</label>
-              <input value={codeLabel} onChange={(e) => setCodeLabel(e.target.value)} />
-            </div>
-            <button className="btn" onClick={() => void createCode(false)}>
-              New code
-            </button>
-            <button className="btn danger" onClick={() => setConfirmRotate(true)}>
-              Rotate (revoke all current)
-            </button>
-            <button className="btn secondary" onClick={() => setCodesPanel(null)}>
-              Close
-            </button>
-          </div>
-          <div className="table-wrap mt">
-            <table className="data">
-              <thead>
-                <tr>
-                  <SortableTh label="Preview" sortKey="preview" state={codeSort} />
-                  <SortableTh label="Label" sortKey="label" state={codeSort} />
-                  <SortableTh label="Status" sortKey="status" state={codeSort} />
-                  <SortableTh label="Failed attempts" sortKey="attempts" state={codeSort} />
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {codeSort.sorted.map((c) => (
-                  <tr key={c.id}>
-                    <td className="mono">{c.code_preview || '••••'}</td>
-                    <td>{c.label || '—'}</td>
-                    <td>
-                      {c.locked_until && new Date(c.locked_until) > new Date() ? (
-                        <span className="badge err">locked until {new Date(c.locked_until).toLocaleTimeString()}</span>
-                      ) : c.is_active ? (
-                        <span className="badge ok">active</span>
-                      ) : (
-                        <span className="badge neutral">inactive</span>
-                      )}
-                    </td>
-                    <td>{c.failed_attempts}</td>
-                    <td>
-                      <button className="btn secondary small" onClick={() => void toggleCode(c, !c.is_active)}>
-                        {c.is_active ? 'Deactivate' : 'Activate'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {codes.length === 0 && <div className="empty">No codes yet — create one.</div>}
-          </div>
-        </div>
-      )}
+        </Fragment>
+      ))}
 
       <ConfirmDialog
         open={confirmRotate}
@@ -349,6 +370,15 @@ export function AdminPanels() {
         confirmLabel="Remove"
         onCancel={() => setConfirmRemove(null)}
         onConfirm={() => void removeMember()}
+      />
+      <ConfirmDialog
+        open={!!confirmDelete}
+        danger
+        title={`Delete ${confirmDelete?.name ?? 'panel'} permanently?`}
+        message="This permanently deletes the panel, its verification codes, assigned judges, and every candidate inside it along with their evaluations. This cannot be undone."
+        confirmLabel="Delete permanently"
+        onCancel={() => setConfirmDelete(null)}
+        onConfirm={() => void deletePanel()}
       />
     </>
   );

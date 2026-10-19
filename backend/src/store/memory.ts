@@ -116,6 +116,23 @@ export class MemoryStore implements Store {
     Object.assign(p, patch);
     return p;
   }
+  async deletePanel(id: string): Promise<boolean> {
+    if (!this.panels.has(id)) return false;
+    for (const [evaluationId, evaluation] of this.evaluations) {
+      if (evaluation.panel_id !== id) continue;
+      this.evaluations.delete(evaluationId);
+      this.criterionScores.delete(evaluationId);
+    }
+    for (const [candidateId, candidate] of this.candidates) {
+      if (candidate.panel_id === id) this.candidates.delete(candidateId);
+    }
+    for (const [codeId, code] of this.panelCodes) {
+      if (code.panel_id === id) this.panelCodes.delete(codeId);
+    }
+    this.panelMembers = this.panelMembers.filter((m) => m.panel_id !== id);
+    this.panels.delete(id);
+    return true;
+  }
   async listMyPanels(judgeId: string): Promise<Panel[]> {
     const ids = this.panelMembers.filter((m) => m.judge_id === judgeId).map((m) => m.panel_id);
     return (await Promise.all(ids.map((id) => this.getPanel(id)))).filter((p): p is Panel => !!p);

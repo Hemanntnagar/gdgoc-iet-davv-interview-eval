@@ -321,6 +321,8 @@ export interface Store {
     id: string,
     patch: { name?: string; is_active?: boolean; expected_evaluations?: number },
   ): Promise<Panel | null>;
+  /** Permanently deletes a panel with its codes, memberships, candidates and evaluations. */
+  deletePanel(id: string): Promise<boolean>;
   listMyPanels(judgeId: string): Promise<Panel[]>;
 
   createPanelCode(input: {

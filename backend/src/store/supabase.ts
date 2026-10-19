@@ -126,6 +126,21 @@ export class SupabaseStore implements Store {
     if (error) throw new Error(`updatePanel: ${error.message}`);
     return data as Panel | null;
   }
+  /** Permanently deletes a panel with its codes, memberships, candidates and evaluations. */
+  async deletePanel(id: string): Promise<boolean> {
+    const existing = await this.getPanel(id);
+    if (!existing) return false;
+    // Evaluations reference both the panel and its candidates; criterion scores
+    // cascade from evaluations.
+    const evaluations = await this.sb.from('evaluations').delete().eq('panel_id', id);
+    if (evaluations.error) throw new Error(`deletePanel(evaluations): ${evaluations.error.message}`);
+    const candidates = await this.sb.from('candidates').delete().eq('panel_id', id);
+    if (candidates.error) throw new Error(`deletePanel(candidates): ${candidates.error.message}`);
+    // Codes and memberships cascade from the panel itself.
+    const panel = await this.sb.from('panels').delete().eq('id', id);
+    if (panel.error) throw new Error(`deletePanel(panels): ${panel.error.message}`);
+    return true;
+  }
   async listMyPanels(judgeId: string): Promise<Panel[]> {
     const rows = (await unwrap(
       await this.sb

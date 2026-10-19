@@ -123,6 +123,23 @@ describe('auth and roles', () => {
     expect(users.status).toBe(403);
   });
 
+  it('lets an admin permanently delete a panel with its candidates, codes and members', async () => {
+    await request(app).post('/api/panels/verify').set(auth(s.judge1Id)).send({ code: 'PANELCODE' });
+    const forbidden = await request(app).delete(`/api/panels/${s.panelId}`).set(auth(s.judge1Id));
+    expect(forbidden.status).toBe(403);
+
+    const res = await request(app).delete(`/api/panels/${s.panelId}`).set(auth(s.adminId));
+    expect(res.status).toBe(200);
+    expect(await store.getPanel(s.panelId)).toBeNull();
+    expect(await store.getCandidate(s.candidateId, { admin: true })).toBeNull();
+    expect((await store.listPanelCodes(s.panelId)).length).toBe(0);
+    expect((await store.listPanelMembers(s.panelId)).length).toBe(0);
+    expect((await store.listMyPanels(s.judge1Id)).some((p) => p.id === s.panelId)).toBe(false);
+
+    const again = await request(app).delete(`/api/panels/${s.panelId}`).set(auth(s.adminId));
+    expect(again.status).toBe(404);
+  });
+
   it('lets an admin change roles but not demote the last admin', async () => {
     const promote = await request(app)
       .patch(`/api/admin/users/${s.judge1Id}/role`)
