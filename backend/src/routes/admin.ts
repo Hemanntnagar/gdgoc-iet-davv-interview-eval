@@ -61,14 +61,17 @@ export function adminRoutes(store: Store, config: AppConfig): Router {
   r.get('/admin/users', requireAuth, async (req: AuthedRequest, res, next) => {
     try {
       isAdmin(req);
-      const users = await store.listProfiles();
-      const panels = await store.listPanels();
+      const [users, panels, members] = await Promise.all([
+        store.listProfiles(),
+        store.listPanels(),
+        store.listAllPanelMembers(),
+      ]);
+      const panelNames = new Map(panels.map((p) => [p.id, p.name] as const));
       const memberships = new Map<string, string[]>();
-      for (const p of panels) {
-        const members = await store.listPanelMembers(p.id);
-        for (const m of members) {
-          memberships.set(m.judge_id, [...(memberships.get(m.judge_id) ?? []), p.name]);
-        }
+      for (const m of members) {
+        const name = panelNames.get(m.panel_id);
+        if (!name) continue;
+        memberships.set(m.judge_id, [...(memberships.get(m.judge_id) ?? []), name]);
       }
       res.json({
         users: users.map((u) => ({ ...u, panels: memberships.get(u.id) ?? [] })),

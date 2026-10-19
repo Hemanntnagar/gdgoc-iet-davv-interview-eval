@@ -72,11 +72,14 @@ export function panelRoutes(store: Store, config: AppConfig): Router {
   r.get('/panels', requireAuth, async (req: AuthedRequest, res, next) => {
     try {
       if (req.user!.role !== 'admin') throw new HttpError(403, 'forbidden', 'Administrator access required');
-      const panels = await store.listPanels();
-      const withMembers = await Promise.all(
-        panels.map(async (p) => ({ ...p, members: await store.listPanelMembers(p.id) })),
-      );
-      res.json({ panels: withMembers });
+      const [panels, members] = await Promise.all([store.listPanels(), store.listAllPanelMembers()]);
+      const byPanel = new Map<string, { judge_id: string; judge_name: string; verified_at: string | null }[]>();
+      for (const m of members) {
+        const list = byPanel.get(m.panel_id) ?? [];
+        list.push({ judge_id: m.judge_id, judge_name: m.judge_name, verified_at: m.verified_at });
+        byPanel.set(m.panel_id, list);
+      }
+      res.json({ panels: panels.map((p) => ({ ...p, members: byPanel.get(p.id) ?? [] })) });
     } catch (e) {
       next(e);
     }

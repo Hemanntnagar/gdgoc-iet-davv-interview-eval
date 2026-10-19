@@ -26,3 +26,6 @@ Thumbs.db
 # Test artifacts
 coverage/
 *.tsbuildinfo
+
+.vercel
+.env*

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/Ui';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { Panel, PanelMember } from '../lib/types';
 
 interface PanelCode {
@@ -48,6 +49,26 @@ export function AdminPanels() {
   useEffect(() => {
     void load().catch((e) => setError(String(e.message ?? e)));
   }, [load]);
+
+  const getCodeSortValue = useCallback((c: PanelCode, key: string): unknown => {
+    switch (key) {
+      case 'preview':
+        return c.code_preview;
+      case 'label':
+        return c.label;
+      case 'status':
+        return c.locked_until && new Date(c.locked_until) > new Date()
+          ? 'locked'
+          : c.is_active
+            ? 'active'
+            : 'inactive';
+      case 'attempts':
+        return c.failed_attempts;
+      default:
+        return '';
+    }
+  }, []);
+  const codeSort = useSort(codes, getCodeSortValue, 'preview');
 
   const createPanel = async () => {
     const token = await getToken();
@@ -275,15 +296,15 @@ export function AdminPanels() {
             <table className="data">
               <thead>
                 <tr>
-                  <th>Preview</th>
-                  <th>Label</th>
-                  <th>Status</th>
-                  <th>Failed attempts</th>
+                  <SortableTh label="Preview" sortKey="preview" state={codeSort} />
+                  <SortableTh label="Label" sortKey="label" state={codeSort} />
+                  <SortableTh label="Status" sortKey="status" state={codeSort} />
+                  <SortableTh label="Failed attempts" sortKey="attempts" state={codeSort} />
                   <th></th>
                 </tr>
               </thead>
               <tbody>
-                {codes.map((c) => (
+                {codeSort.sorted.map((c) => (
                   <tr key={c.id}>
                     <td className="mono">{c.code_preview || '••••'}</td>
                     <td>{c.label || '—'}</td>

@@ -58,19 +58,24 @@ export function createApp(deps: AppDeps): express.Express {
     res.json({ ok: true, time: new Date().toISOString() });
   });
 
-  app.use('/api', auth, meRoutes(deps.store));
-  app.use('/api', auth, panelRoutes(deps.store, deps.config));
-  app.use('/api', auth, candidateRoutes(deps.store));
-  app.use('/api', auth, roundRoutes(deps.store));
-  app.use('/api', auth, evaluationRoutes(deps.store));
-  app.use('/api', auth, syncRoutes(deps.store));
-  app.use('/api', auth, resultRoutes(deps.store));
-  app.use('/api', auth, adminRoutes(deps.store, deps.config));
-  app.use('/api', auth, registrationRoutes(deps.store, deps.config));
-  app.use('/api', auth, verticalRoutes(deps.store));
-  app.use('/api', auth, applicantImportRoutes(deps.store));
-  app.use('/api', auth, sheetSyncRoutes(deps.store, deps.config));
-  app.use('/api', auth, reportRoutes(deps.store));
+  // Authenticate once for the whole /api tree. Mounting `auth` in front of
+  // every router made Express re-run it on each fall-through, so requests
+  // to later routers verified the token + fetched the profile up to 13×.
+  app.use('/api', auth);
+
+  app.use('/api', meRoutes(deps.store));
+  app.use('/api', panelRoutes(deps.store, deps.config));
+  app.use('/api', candidateRoutes(deps.store));
+  app.use('/api', roundRoutes(deps.store));
+  app.use('/api', evaluationRoutes(deps.store));
+  app.use('/api', syncRoutes(deps.store));
+  app.use('/api', resultRoutes(deps.store));
+  app.use('/api', adminRoutes(deps.store, deps.config));
+  app.use('/api', registrationRoutes(deps.store, deps.config));
+  app.use('/api', verticalRoutes(deps.store));
+  app.use('/api', applicantImportRoutes(deps.store));
+  app.use('/api', sheetSyncRoutes(deps.store, deps.config));
+  app.use('/api', reportRoutes(deps.store));
 
   app.use((_req, res) => {
     res.status(404).json({ error: { code: 'not_found', message: 'Route not found' } });

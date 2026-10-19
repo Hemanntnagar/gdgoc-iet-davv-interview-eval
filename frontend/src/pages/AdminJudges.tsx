@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/Ui';
+import { SortableTh, useSort } from '../components/Sortable';
 
 interface UserRow {
   id: string;
@@ -30,6 +31,24 @@ export function AdminJudges() {
   useEffect(() => {
     void load().catch((e) => setError(String(e.message ?? e)));
   }, [load]);
+
+  const getSortValue = useCallback((u: UserRow, key: string): unknown => {
+    switch (key) {
+      case 'name':
+        return u.full_name;
+      case 'email':
+        return u.email;
+      case 'role':
+        return u.role;
+      case 'panels':
+        return u.panels.join(', ');
+      case 'status':
+        return u.is_active;
+      default:
+        return '';
+    }
+  }, []);
+  const sort = useSort(users, getSortValue, 'name');
 
   const changeRole = async (user: UserRow) => {
     const token = await getToken();
@@ -81,16 +100,16 @@ export function AdminJudges() {
         <table className="data">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Email</th>
-              <th>Role</th>
-              <th>Panels</th>
-              <th>Status</th>
+              <SortableTh label="Name" sortKey="name" state={sort} />
+              <SortableTh label="Email" sortKey="email" state={sort} />
+              <SortableTh label="Role" sortKey="role" state={sort} />
+              <SortableTh label="Panels" sortKey="panels" state={sort} />
+              <SortableTh label="Status" sortKey="status" state={sort} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
+            {sort.sorted.map((u) => (
               <tr key={u.id}>
                 <td>{u.full_name}</td>
                 <td>{u.email}</td>

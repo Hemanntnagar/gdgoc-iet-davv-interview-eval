@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { Criterion, Round } from '../lib/types';
 
 export function AdminRounds() {
@@ -40,6 +41,37 @@ export function AdminRounds() {
       setCriteria(res.criteria);
     })();
   }, [selected, getToken, notice]);
+
+  const roundSortValue = useCallback((r: Round, key: string): unknown => {
+    switch (key) {
+      case 'name':
+        return r.name;
+      case 'open':
+        return r.is_open;
+      case 'edits':
+        return r.allow_edit_after_submit;
+      case 'closes':
+        return r.closes_at;
+      default:
+        return '';
+    }
+  }, []);
+  const criterionSortValue = useCallback((c: Criterion, key: string): unknown => {
+    switch (key) {
+      case 'name':
+        return c.name;
+      case 'range':
+        return c.min_score;
+      case 'weight':
+        return c.weight;
+      case 'active':
+        return c.is_active;
+      default:
+        return '';
+    }
+  }, []);
+  const roundSort = useSort(rounds, roundSortValue, 'name');
+  const criterionSort = useSort(criteria, criterionSortValue);
 
   const createRound = async () => {
     const token = await getToken();
@@ -138,14 +170,14 @@ export function AdminRounds() {
           <table className="data">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Open</th>
-                <th>Edits allowed</th>
-                <th></th>
+                <SortableTh label="Name" sortKey="name" state={roundSort} />
+                <SortableTh label="Open" sortKey="open" state={roundSort} />
+                <SortableTh label="Edits allowed" sortKey="edits" state={roundSort} />
+                <SortableTh label="Closes" sortKey="closes" state={roundSort} />
               </tr>
             </thead>
             <tbody>
-              {rounds.map((r) => (
+              {roundSort.sorted.map((r) => (
                 <tr key={r.id}>
                   <td>
                     <button
@@ -181,14 +213,14 @@ export function AdminRounds() {
             <table className="data">
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th>Range</th>
-                  <th>Weight</th>
-                  <th>Active</th>
+                  <SortableTh label="Name" sortKey="name" state={criterionSort} />
+                  <SortableTh label="Range" sortKey="range" state={criterionSort} />
+                  <SortableTh label="Weight" sortKey="weight" state={criterionSort} />
+                  <SortableTh label="Active" sortKey="active" state={criterionSort} />
                 </tr>
               </thead>
               <tbody>
-                {criteria.map((c) => (
+                {criterionSort.sorted.map((c) => (
                   <tr key={c.id} style={!c.is_active ? { opacity: 0.5 } : undefined}>
                     <td>
                       {c.name}

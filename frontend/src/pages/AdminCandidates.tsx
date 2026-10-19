@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, downloadCsv, ApiError, API_URL } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/Ui';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { Candidate, Panel } from '../lib/types';
 
 interface ImportSheetAudit {
@@ -56,6 +57,31 @@ export function AdminCandidates() {
     const t = setTimeout(() => void load().catch((e) => setError(String(e.message ?? e))), 250);
     return () => clearTimeout(t);
   }, [load]);
+
+  const panelName = useCallback(
+    (id: string) => panels.find((p) => p.id === id)?.name ?? '',
+    [panels],
+  );
+  const getSortValue = useCallback(
+    (c: Candidate, key: string): unknown => {
+      switch (key) {
+        case 'name':
+          return c.full_name;
+        case 'branch':
+          return c.branch;
+        case 'application':
+          return c.application_id;
+        case 'panel':
+          return panelName(c.panel_id);
+        case 'status':
+          return c.interview_status;
+        default:
+          return '';
+      }
+    },
+    [panelName],
+  );
+  const sort = useSort(candidates, getSortValue, 'name');
 
   const save = async () => {
     if (!editing) return;
@@ -285,16 +311,16 @@ export function AdminCandidates() {
         <table className="data">
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Branch</th>
-              <th>Application</th>
-              <th>Panel</th>
-              <th>Status</th>
+              <SortableTh label="Name" sortKey="name" state={sort} />
+              <SortableTh label="Branch" sortKey="branch" state={sort} />
+              <SortableTh label="Application" sortKey="application" state={sort} />
+              <SortableTh label="Panel" sortKey="panel" state={sort} title="Sorts Panel 1, Panel 2, … numerically" />
+              <SortableTh label="Status" sortKey="status" state={sort} />
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {candidates.map((c) => (
+            {sort.sorted.map((c) => (
               <tr key={c.id} style={c.archived_at ? { opacity: 0.55 } : undefined}>
                 <td>{c.full_name}</td>
                 <td>{c.branch}</td>

@@ -4,9 +4,8 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { listCachedCandidates, saveCandidates } from '../lib/idb';
 import { useOnline } from '../lib/net';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { Candidate, Vertical } from '../lib/types';
-
-type SortKey = 'name' | 'branch' | 'average' | 'priority' | 'roll';
 
 export function Candidates() {
   const { getToken, panels } = useAuth();
@@ -20,8 +19,6 @@ export function Candidates() {
   const [verticalId, setVerticalId] = useState('');
   const [shift, setShift] = useState('');
   const [status, setStatus] = useState('');
-  const [sort, setSort] = useState<SortKey>('name');
-  const [order, setOrder] = useState<'asc' | 'desc'>('asc');
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -37,8 +34,6 @@ export function Candidates() {
         if (verticalId) qs.set('verticalId', verticalId);
         if (shift) qs.set('shift', shift);
         if (status) qs.set('interviewStatus', status);
-        qs.set('sort', sort);
-        qs.set('order', order);
         const res = await api<{ candidates: Candidate[] }>(`/candidates?${qs}`, { token });
         setCandidates(res.candidates);
         setSource('server');
@@ -55,7 +50,7 @@ export function Candidates() {
     const cached = await listCachedCandidates(panels.map((p) => p.id));
     setCandidates(cached);
     setSource('cache');
-  }, [getToken, panels, online, search, branch, panelId, verticalId, shift, status, sort, order]);
+  }, [getToken, panels, online, search, branch, panelId, verticalId, shift, status]);
 
   useEffect(() => {
     if (!online || verticals.length > 0) return;
@@ -74,6 +69,31 @@ export function Candidates() {
     const set = new Set((candidates ?? []).map((c) => c.branch).filter(Boolean));
     return [...set].sort();
   }, [candidates]);
+
+  const getSortValue = useCallback(
+    (c: Candidate, key: string): unknown => {
+      switch (key) {
+        case 'name':
+          return c.full_name;
+        case 'branch':
+          return c.branch;
+        case 'roll':
+          return c.roll_number;
+        case 'vertical':
+          return verticals.find((v) => v.id === c.vertical_id)?.name ?? '';
+        case 'priority':
+          return c.priority;
+        case 'application':
+          return c.application_id;
+        case 'status':
+          return c.interview_status;
+        default:
+          return '';
+      }
+    },
+    [verticals],
+  );
+  const sort = useSort(candidates ?? [], getSortValue, 'name');
 
   return (
     <>
@@ -142,26 +162,6 @@ export function Candidates() {
               <option value="no_show">No show</option>
             </select>
           </div>
-          <div>
-            <label>Sort by</label>
-            <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
-              <option value="name">Name</option>
-              <option value="branch">Branch</option>
-              <option value="average">Average rating</option>
-              <option value="priority">Priority</option>
-              <option value="roll">Roll number</option>
-            </select>
-          </div>
-          <div>
-            <label>Order</label>
-            <select
-              value={order}
-              onChange={(e) => setOrder(e.target.value as 'asc' | 'desc')}
-            >
-              <option value="asc">Ascending</option>
-              <option value="desc">Descending</option>
-            </select>
-          </div>
         </div>
       </div>
 
@@ -176,18 +176,18 @@ export function Candidates() {
           <table className="data">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Branch</th>
-                <th>Roll</th>
-                <th>Vertical / Shift</th>
-                <th>Priority</th>
-                <th>Application</th>
-                <th>Status</th>
+                <SortableTh label="Name" sortKey="name" state={sort} />
+                <SortableTh label="Branch" sortKey="branch" state={sort} />
+                <SortableTh label="Roll" sortKey="roll" state={sort} />
+                <SortableTh label="Vertical / Shift" sortKey="vertical" state={sort} />
+                <SortableTh label="Priority" sortKey="priority" state={sort} />
+                <SortableTh label="Application" sortKey="application" state={sort} />
+                <SortableTh label="Status" sortKey="status" state={sort} />
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {candidates.map((c) => (
+              {sort.sorted.map((c) => (
                 <tr key={c.id}>
                   <td>{c.full_name}</td>
                   <td>{c.branch}</td>

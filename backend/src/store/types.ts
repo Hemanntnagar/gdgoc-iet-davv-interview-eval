@@ -347,6 +347,9 @@ export interface Store {
   addPanelMember(panelId: string, judgeId: string, assignedBy: string | null): Promise<void>;
   removePanelMember(panelId: string, judgeId: string): Promise<boolean>;
   listPanelMembers(panelId: string): Promise<{ judge_id: string; judge_name: string; verified_at: string | null }[]>;
+  listAllPanelMembers(): Promise<
+    { panel_id: string; judge_id: string; judge_name: string; verified_at: string | null }[]
+  >;
 
   listCandidates(scope: CandidateScope, filters: CandidateFilters): Promise<Candidate[]>;
   getCandidate(id: string, scope: CandidateScope): Promise<Candidate | null>;

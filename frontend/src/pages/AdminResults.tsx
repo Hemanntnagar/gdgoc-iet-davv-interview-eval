@@ -1,9 +1,10 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api, downloadCsv } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { Panel, ResultRow, Vertical } from '../lib/types';
 
-type SortKey = 'name' | 'branch' | 'average' | 'priority' | 'roll';
+const SERVER_SORT_KEYS = ['name', 'branch', 'average', 'priority', 'roll', 'created'];
 
 export function AdminResults() {
   const { getToken } = useAuth();
@@ -17,10 +18,30 @@ export function AdminResults() {
   const [shift, setShift] = useState('');
   const [evalStatus, setEvalStatus] = useState('');
   const [interviewStatus, setInterviewStatus] = useState('');
-  const [sort, setSort] = useState<SortKey>('average');
-  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
   const [expanded, setExpanded] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const getSortValue = useCallback((r: ResultRow, key: string): unknown => {
+    switch (key) {
+      case 'name':
+        return r.full_name;
+      case 'branch':
+        return r.branch;
+      case 'panel':
+        return r.panel_name;
+      case 'vertical':
+        return r.vertical_name;
+      case 'average':
+        return r.average_score;
+      case 'evaluations':
+        return r.evaluation_count;
+      case 'status':
+        return r.interview_status;
+      default:
+        return '';
+    }
+  }, []);
+  const sort = useSort(rows, getSortValue, 'average', 'desc');
 
   const qs = useCallback(() => {
     const p = new URLSearchParams();
@@ -31,10 +52,10 @@ export function AdminResults() {
     if (shift) p.set('shift', shift);
     if (evalStatus) p.set('evaluationStatus', evalStatus);
     if (interviewStatus) p.set('interviewStatus', interviewStatus);
-    p.set('sort', sort);
-    p.set('order', order);
+    p.set('sort', sort.sortKey && SERVER_SORT_KEYS.includes(sort.sortKey) ? sort.sortKey : 'name');
+    p.set('order', sort.sortDir);
     return p.toString();
-  }, [search, branch, panelId, verticalId, shift, evalStatus, interviewStatus, sort, order]);
+  }, [search, branch, panelId, verticalId, shift, evalStatus, interviewStatus, sort.sortKey, sort.sortDir]);
 
   const load = useCallback(async () => {
     const token = await getToken();
@@ -65,16 +86,6 @@ export function AdminResults() {
       setError(e instanceof Error ? e.message : 'Export failed');
     }
   };
-
-  const toggleSort = (key: SortKey) => {
-    if (sort === key) setOrder(order === 'asc' ? 'desc' : 'asc');
-    else {
-      setSort(key);
-      setOrder(key === 'average' ? 'desc' : 'asc');
-    }
-  };
-
-  const arrow = (key: SortKey) => (sort === key ? (order === 'asc' ? ' ↑' : ' ↓') : '');
 
   return (
     <>
@@ -152,30 +163,18 @@ export function AdminResults() {
         <table className="data">
           <thead>
             <tr>
-              <th>
-                <button onClick={() => toggleSort('name')}>
-                  Candidate{arrow('name')}
-                </button>
-              </th>
-              <th>
-                <button onClick={() => toggleSort('branch')}>
-                  Branch{arrow('branch')}
-                </button>
-              </th>
-              <th>Panel</th>
-              <th>Vertical / shift</th>
-              <th>
-                <button onClick={() => toggleSort('average')}>
-                  Final avg{arrow('average')}
-                </button>
-              </th>
+              <SortableTh label="Candidate" sortKey="name" state={sort} />
+              <SortableTh label="Branch" sortKey="branch" state={sort} />
+              <SortableTh label="Panel" sortKey="panel" state={sort} title="Sorts Panel 1, Panel 2, … numerically" />
+              <SortableTh label="Vertical / shift" sortKey="vertical" state={sort} />
+              <SortableTh label="Final avg" sortKey="average" state={sort} />
               <th>Individual scores</th>
-              <th>Evaluations</th>
-              <th>Status</th>
+              <SortableTh label="Evaluations" sortKey="evaluations" state={sort} />
+              <SortableTh label="Status" sortKey="status" state={sort} />
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {sort.sorted.map((r) => (
               <Fragment key={r.candidate_id}>
                 <tr>
                   <td>

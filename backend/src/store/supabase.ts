@@ -314,13 +314,29 @@ export class SupabaseStore implements Store {
     const rows = unwrap(
       await this.sb
         .from('panel_members')
-        .select('judge_id, verified_at, profiles(full_name)')
+        .select('judge_id, verified_at, judge:profiles!panel_members_judge_id_fkey(full_name)')
         .eq('panel_id', panelId),
       'listPanelMembers',
     ) as any[];
     return rows.map((r) => ({
       judge_id: r.judge_id,
-      judge_name: (r.profiles as any)?.full_name ?? '',
+      judge_name: (r.judge as any)?.full_name ?? '',
+      verified_at: r.verified_at,
+    }));
+  }
+  async listAllPanelMembers(): Promise<
+    { panel_id: string; judge_id: string; judge_name: string; verified_at: string | null }[]
+  > {
+    const rows = unwrap(
+      await this.sb
+        .from('panel_members')
+        .select('panel_id, judge_id, verified_at, judge:profiles!panel_members_judge_id_fkey(full_name)'),
+      'listAllPanelMembers',
+    ) as any[];
+    return rows.map((r) => ({
+      panel_id: r.panel_id,
+      judge_id: r.judge_id,
+      judge_name: (r.judge as any)?.full_name ?? '',
       verified_at: r.verified_at,
     }));
   }
@@ -415,6 +431,15 @@ export class SupabaseStore implements Store {
     input: { full_name: string; branch: string; application_id: string | null; panel_id: string },
     actorId: string,
   ): Promise<Candidate> {
+    if (input.application_id) {
+      const { data: dup } = await this.sb
+        .from('candidates')
+        .select('id')
+        .eq('application_id', input.application_id)
+        .eq('panel_id', input.panel_id)
+        .maybeSingle();
+      if (dup) throw new Error('application_id already exists for this panel');
+    }
     return unwrap(
       await this.sb
         .from('candidates')
@@ -455,16 +480,18 @@ export class SupabaseStore implements Store {
         continue;
       }
       if (row.application_id) {
+        const dupKey = `${row.application_id}::${row.panel_id}`;
         const { data: dup } = await this.sb
           .from('candidates')
           .select('id')
           .eq('application_id', row.application_id)
+          .eq('panel_id', row.panel_id)
           .maybeSingle();
-        if (dup || seen.has(row.application_id)) {
+        if (dup || seen.has(dupKey)) {
           result.skipped_duplicates += 1;
           continue;
         }
-        seen.add(row.application_id);
+        seen.add(dupKey);
       }
       try {
         await this.createCandidate(row, actorId);
@@ -852,19 +879,27 @@ export class SupabaseStore implements Store {
         .eq('source_key', row.sourceKey)
         .maybeSingle();
       let existing = match.data ?? null;
-      // 2) roll number / application_id
+      // 2) roll number / application_id — scoped to the same sheet so an
+      // applicant who applied to multiple verticals is kept once per vertical.
       if (!existing && row.roll_number) {
         const m2 = await this.sb
           .from('candidates')
           .select('*')
+          .eq('source_sheet', row.sourceSheet)
           .or(`application_id.eq.${row.roll_number},roll_number.eq.${row.roll_number}`)
           .limit(1)
           .maybeSingle();
         existing = m2.data ?? null;
       }
-      // 3) email
+      // 3) email — same sheet only (never collapse across verticals).
       if (!existing && row.email) {
-        const m3 = await this.sb.from('candidates').select('*').eq('email', row.email).limit(1).maybeSingle();
+        const m3 = await this.sb
+          .from('candidates')
+          .select('*')
+          .eq('source_sheet', row.sourceSheet)
+          .eq('email', row.email)
+          .limit(1)
+          .maybeSingle();
         existing = m3.data ?? null;
       }
 

@@ -212,6 +212,17 @@ export class MemoryStore implements Store {
       }));
   }
 
+  async listAllPanelMembers(): Promise<
+    { panel_id: string; judge_id: string; judge_name: string; verified_at: string | null }[]
+  > {
+    return this.panelMembers.map((m) => ({
+      panel_id: m.panel_id,
+      judge_id: m.judge_id,
+      judge_name: this.profiles.get(m.judge_id)?.full_name ?? '',
+      verified_at: m.verified_at,
+    }));
+  }
+
   async verifyPanelCode(input: {
     code_hash: string;
     judge_id: string;
@@ -322,7 +333,12 @@ export class MemoryStore implements Store {
     input: { full_name: string; branch: string; application_id: string | null; panel_id: string },
     actorId: string,
   ): Promise<Candidate> {
-    if (input.application_id && [...this.candidates.values()].some((c) => c.application_id === input.application_id)) {
+    if (
+      input.application_id &&
+      [...this.candidates.values()].some(
+        (c) => c.application_id === input.application_id && c.panel_id === input.panel_id,
+      )
+    ) {
       throw new Error('application_id already exists');
     }
     const c: Candidate = {
@@ -370,14 +386,17 @@ export class MemoryStore implements Store {
         continue;
       }
       if (row.application_id) {
+        const dupKey = `${row.application_id}::${row.panel_id}`;
         if (
-          seen.has(row.application_id) ||
-          [...this.candidates.values()].some((c) => c.application_id === row.application_id)
+          seen.has(dupKey) ||
+          [...this.candidates.values()].some(
+            (c) => c.application_id === row.application_id && c.panel_id === row.panel_id,
+          )
         ) {
           result.skipped_duplicates += 1;
           continue;
         }
-        seen.add(row.application_id);
+        seen.add(dupKey);
       }
       await this.createCandidate(row, _actorId);
       result.imported += 1;
@@ -690,16 +709,22 @@ export class MemoryStore implements Store {
         [...this.candidates.values()].find(
           (c) => c.source_sheet === row.sourceSheet && c.source_key === row.sourceKey,
         ) ?? null;
-      // 2) roll number / application_id
+      // 2) roll number / application_id — same sheet only, so an applicant
+      // who applied to multiple verticals is kept once per vertical.
       if (!existing && row.roll_number) {
         existing =
           [...this.candidates.values()].find(
-            (c) => (c.roll_number || c.application_id || '').toUpperCase() === row.roll_number.toUpperCase(),
+            (c) =>
+              c.source_sheet === row.sourceSheet &&
+              (c.roll_number || c.application_id || '').toUpperCase() === row.roll_number.toUpperCase(),
           ) ?? null;
       }
-      // 3) email
+      // 3) email — same sheet only (never collapse across verticals).
       if (!existing && row.email) {
-        existing = [...this.candidates.values()].find((c) => c.email?.toLowerCase() === row.email.toLowerCase()) ?? null;
+        existing =
+          [...this.candidates.values()].find(
+            (c) => c.source_sheet === row.sourceSheet && c.email?.toLowerCase() === row.email.toLowerCase(),
+          ) ?? null;
       }
 
       if (!existing) {

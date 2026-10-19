@@ -160,6 +160,16 @@ table.data th button {
   text-transform: inherit;
   letter-spacing: inherit;
 }
+table.data th .th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+}
+table.data th .th-sort:hover { color: var(--blue-dark); }
+table.data th .th-sort.active { color: var(--blue-dark); }
+table.data th .th-sort-icon { font-size: 0.7rem; opacity: 0.45; }
+table.data th .th-sort.active .th-sort-icon { opacity: 1; }
 
 .alert { padding: 0.7rem 0.9rem; border-radius: 8px; margin-bottom: 0.8rem; font-size: 0.92rem; }
 .alert.error { background: var(--danger-bg); color: var(--danger); }

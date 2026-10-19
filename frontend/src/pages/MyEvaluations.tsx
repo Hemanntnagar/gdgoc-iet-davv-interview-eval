@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { listOutbox } from '../lib/idb';
 import { useOnline } from '../lib/net';
 import { useSync } from '../lib/syncContext';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { EvaluationWithScores, OutboxItem } from '../lib/types';
 
 const statusBadge = (s: OutboxItem['status']) => {
@@ -28,6 +29,24 @@ export function MyEvaluations() {
   const { refresh } = useSync();
   const [server, setServer] = useState<EvaluationWithScores[] | null>(null);
   const [local, setLocal] = useState<OutboxItem[]>([]);
+
+  const getSortValue = useCallback((e: EvaluationWithScores, key: string): unknown => {
+    switch (key) {
+      case 'candidate':
+        return e.candidate_name ?? e.candidate_id;
+      case 'round':
+        return e.round_name ?? e.round_id;
+      case 'score':
+        return e.overall_score;
+      case 'version':
+        return e.version;
+      case 'submitted':
+        return e.submitted_at;
+      default:
+        return '';
+    }
+  }, []);
+  const sort = useSort(server ?? [], getSortValue, 'submitted', 'desc');
 
   useEffect(() => {
     void (async () => {
@@ -95,15 +114,15 @@ export function MyEvaluations() {
           <table className="data">
             <thead>
               <tr>
-                <th>Candidate</th>
-                <th>Round</th>
-                <th>Score</th>
-                <th>Version</th>
-                <th>Submitted</th>
+                <SortableTh label="Candidate" sortKey="candidate" state={sort} />
+                <SortableTh label="Round" sortKey="round" state={sort} />
+                <SortableTh label="Score" sortKey="score" state={sort} />
+                <SortableTh label="Version" sortKey="version" state={sort} />
+                <SortableTh label="Submitted" sortKey="submitted" state={sort} />
               </tr>
             </thead>
             <tbody>
-              {server.map((e) => (
+              {sort.sorted.map((e) => (
                 <tr key={e.id}>
                   <td>{e.candidate_name ?? e.candidate_id}</td>
                   <td>{e.round_name ?? e.round_id}</td>

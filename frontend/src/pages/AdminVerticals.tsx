@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { SortableTh, useSort } from '../components/Sortable';
 import type { Vertical } from '../lib/types';
 
 interface SheetTab {
@@ -44,6 +45,24 @@ export function AdminVerticals() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const getSortValue = useCallback((v: Vertical, key: string): unknown => {
+    switch (key) {
+      case 'order':
+        return v.sort_order;
+      case 'key':
+        return v.key;
+      case 'name':
+        return v.name;
+      case 'worksheet':
+        return v.worksheet;
+      case 'active':
+        return v.is_active;
+      default:
+        return '';
+    }
+  }, []);
+  const sort = useSort(verticals, getSortValue);
 
   const patch = async (id: string, body: Record<string, unknown>) => {
     setBusy(true);
@@ -99,15 +118,15 @@ export function AdminVerticals() {
         <table className="data">
           <thead>
             <tr>
-              <th>#</th>
-              <th>Key</th>
-              <th>Name</th>
-              <th>Worksheet (sync)</th>
-              <th>Active</th>
+              <SortableTh label="#" sortKey="order" state={sort} title="Configured sort order" />
+              <SortableTh label="Key" sortKey="key" state={sort} />
+              <SortableTh label="Name" sortKey="name" state={sort} />
+              <SortableTh label="Worksheet (sync)" sortKey="worksheet" state={sort} />
+              <SortableTh label="Active" sortKey="active" state={sort} />
             </tr>
           </thead>
           <tbody>
-            {verticals.map((v, i) => (
+            {sort.sorted.map((v, i) => (
               <tr key={v.id}>
                 <td>{i + 1}</td>
                 <td className="mono">{v.key}</td>
