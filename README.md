@@ -50,14 +50,21 @@ npm run dev                 # http://localhost:5173 (proxies /api to backend)
 
 ### 4. First admin
 
-Registration always creates **judge** accounts. To promote an admin, run in the
-Supabase SQL editor (after the user has registered):
+Registration always creates **judge** accounts. Set an admin secret code in the
+backend environment (`ADMIN_SECRET_CODE`), then enter it in the "Admin secret
+code" field on the registration form — the account becomes an admin
+immediately (rate-limited, compared in constant time, code never returned by
+any endpoint).
+
+Alternatively, promote an existing account from the admin UI
+(Admin → Judges → change role) or via SQL:
 
 ```sql
 update public.profiles set role = 'admin' where id = '<auth-user-uuid>';
 ```
 
-Or use the admin UI after one admin exists (Admin → Judges → change role).
+Judges join their panel by entering a private panel code at `/verify`
+(Admin → Panels → create/rotate code).
 
 ## Deployment
 

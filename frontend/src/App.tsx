@@ -2,7 +2,6 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { useAuth } from './lib/auth';
 import { AdminCandidates } from './pages/AdminCandidates';
-import { AdminInterviewers } from './pages/AdminInterviewers';
 import { AdminJudges } from './pages/AdminJudges';
 import { AdminPanels } from './pages/AdminPanels';
 import { AdminReports } from './pages/AdminReports';
@@ -53,7 +52,6 @@ export default function App() {
         <Route path="/admin/candidates" element={<AdminCandidates />} />
         <Route path="/admin/panels" element={<AdminPanels />} />
         <Route path="/admin/judges" element={<AdminJudges />} />
-        <Route path="/admin/interviewers" element={<AdminInterviewers />} />
         <Route path="/admin/verticals" element={<AdminVerticals />} />
         <Route path="/admin/rounds" element={<AdminRounds />} />
         <Route path="/admin/results" element={<AdminResults />} />

@@ -5,15 +5,7 @@ export interface Profile {
   email: string;
   full_name: string;
   role: Role;
-  // addendum: interviewer provisioning metadata
-  login_id?: string;
-  display_name?: string;
-  vertical_ids?: string[];
-  panel_ids?: string[];
-  shift_restrictions?: string[];
   is_active?: boolean;
-  created_at?: string;
-  password_reset_at?: string | null;
 }
 
 export interface Panel {
@@ -172,27 +164,6 @@ export interface EvaluationWithScores {
   judge_name?: string;
   candidate_name?: string;
   round_name?: string;
-}
-
-/** addendum: admin-provisioned interviewer account. */
-export interface Interviewer {
-  id: string;
-  email: string;
-  login_id: string;
-  display_name: string;
-  vertical_ids: string[];
-  panel_ids: string[];
-  shift_restrictions: string[];
-  is_active: boolean;
-  created_at: string;
-  password_reset_at: string | null;
-}
-
-/** One-time credentials — only ever returned by provision/reset endpoints. */
-export interface ProvisionCredentials {
-  login_id: string;
-  email: string;
-  password: string;
 }
 
 /** addendum: spreadsheet sync connection status. */

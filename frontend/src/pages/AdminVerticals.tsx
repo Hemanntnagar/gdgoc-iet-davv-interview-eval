@@ -89,8 +89,8 @@ export function AdminVerticals() {
     <>
       <h1>Verticals</h1>
       <p className="muted">
-        The recruitment verticals drive candidate grouping, sidebar filters, interviewer accounts
-        and the worksheet mapping for spreadsheet sync.
+        The recruitment verticals drive candidate grouping, sidebar filters and the worksheet
+        mapping for spreadsheet sync.
       </p>
       {error && <div className="alert error">{error}</div>}
       {notice && <div className="alert success">{notice}</div>}

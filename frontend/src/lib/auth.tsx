@@ -24,12 +24,24 @@ interface AuthState {
   panels: Panel[];
   offlineSession: OfflineSession | null;
   signIn: (email: string, password: string) => Promise<void>;
-  register: (fullName: string, email: string, password: string) => Promise<string | null>;
+  register: (
+    fullName: string,
+    email: string,
+    password: string,
+    adminCode?: string,
+  ) => Promise<string | null>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
   refreshMe: () => Promise<void>;
   /** True when we only have a local offline session (not fresh server auth). */
   isOfflineSession: boolean;
+}
+
+const PENDING_ADMIN_CODE_KEY = 'gdgoc-pending-admin-code';
+
+/** Promotes the signed-in account to admin using the secret code. */
+async function claimAdmin(token: string, code: string): Promise<void> {
+  await api('/admin/claim', { token, method: 'POST', body: JSON.stringify({ code }) });
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -125,22 +137,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await loadMe(data.session.access_token);
       setOfflineSession(await getOfflineSession());
       setStatus('online');
+      // A secret admin code entered during registration (before email
+      // confirmation) is retried here, once the account can authenticate.
+      const pending = localStorage.getItem(PENDING_ADMIN_CODE_KEY);
+      if (pending) {
+        localStorage.removeItem(PENDING_ADMIN_CODE_KEY);
+        try {
+          await claimAdmin(data.session.access_token, pending);
+          await loadMe(data.session.access_token);
+        } catch {
+          /* wrong code — the account stays a judge */
+        }
+      }
     },
     [loadMe],
   );
 
-  const register = useCallback(async (fullName: string, email: string, password: string) => {
-    const { data, error } = await supabase().auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    });
-    if (error) throw new Error(error.message);
-    if (data.user && !data.session) {
-      return 'Account created. Check your email to confirm, then sign in.';
-    }
-    return null;
-  }, []);
+  const register = useCallback(
+    async (fullName: string, email: string, password: string, adminCode?: string) => {
+      const { data, error } = await supabase().auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } },
+      });
+      if (error) throw new Error(error.message);
+      if (data.user && !data.session) {
+        if (adminCode) localStorage.setItem(PENDING_ADMIN_CODE_KEY, adminCode);
+        return 'Account created. Check your email to confirm, then sign in.';
+      }
+      if (adminCode && data.session) {
+        try {
+          await claimAdmin(data.session.access_token, adminCode);
+        } catch {
+          return 'Account created, but the admin secret code was rejected. You signed in as a judge.';
+        }
+      }
+      return null;
+    },
+    [],
+  );
 
   const signOut = useCallback(async () => {
     try {

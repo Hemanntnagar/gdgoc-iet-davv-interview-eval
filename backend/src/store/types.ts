@@ -312,33 +312,6 @@ export interface Store {
     patch: Partial<{ name: string; worksheet: string | null; is_active: boolean; sort_order: number }>,
   ): Promise<Vertical | null>;
 
-  // --- addendum: interviewer account provisioning ---
-  /** Provision a login_id account. The caller (Supabase-backed auth) creates the
-   *  auth user; this records the profile metadata. Plaintext passwords never
-   *  touch the store. */
-  provisionInterviewer(input: {
-    id: string;
-    login_id: string;
-    email: string;
-    display_name: string;
-    vertical_ids: string[];
-    panel_ids?: string[];
-    shift_restrictions?: string[];
-    created_by: string;
-  }): Promise<Profile>;
-  updateInterviewer(
-    userId: string,
-    patch: Partial<{
-      display_name: string;
-      vertical_ids: string[];
-      panel_ids: string[];
-      shift_restrictions: string[];
-      is_active: boolean;
-    }>,
-  ): Promise<Profile | null>;
-  recordPasswordReset(userId: string): Promise<void>;
-  getProfileByLoginId(loginId: string): Promise<Profile | null>;
-
   listPanels(): Promise<Panel[]>;
   getPanel(id: string): Promise<Panel | null>;
   createPanel(input: { name: string; expected_evaluations: number }): Promise<Panel>;

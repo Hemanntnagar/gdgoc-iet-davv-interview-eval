@@ -820,64 +820,6 @@ export class SupabaseStore implements Store {
     return data as Vertical | null;
   }
 
-  // ---- addendum: interviewer provisioning --------------------------------
-  async provisionInterviewer(input: {
-    id: string;
-    login_id: string;
-    email: string;
-    display_name: string;
-    vertical_ids: string[];
-    panel_ids?: string[];
-    shift_restrictions?: string[];
-    created_by: string;
-  }): Promise<Profile> {
-    return unwrap(
-      await this.sb
-        .from('profiles')
-        .insert({
-          id: input.id,
-          email: input.email,
-          full_name: input.display_name,
-          role: 'judge',
-          is_active: true,
-          login_id: input.login_id,
-          display_name: input.display_name,
-          vertical_ids: input.vertical_ids,
-          panel_ids: input.panel_ids ?? [],
-          shift_restrictions: input.shift_restrictions ?? [],
-          created_by: input.created_by,
-        })
-        .select('*')
-        .single(),
-      'provisionInterviewer',
-    ) as Profile;
-  }
-  async updateInterviewer(
-    userId: string,
-    patch: Partial<{
-      display_name: string;
-      vertical_ids: string[];
-      panel_ids: string[];
-      shift_restrictions: string[];
-      is_active: boolean;
-    }>,
-  ): Promise<Profile | null> {
-    const dbPatch: Record<string, unknown> = { ...patch };
-    if (patch.display_name !== undefined) dbPatch.full_name = patch.display_name;
-    const { data, error } = await this.sb.from('profiles').update(dbPatch).eq('id', userId).select('*').maybeSingle();
-    if (error) throw new Error(`updateInterviewer: ${error.message}`);
-    return data as Profile | null;
-  }
-  async recordPasswordReset(userId: string): Promise<void> {
-    const { error } = await this.sb.from('profiles').update({ password_reset_at: new Date().toISOString() }).eq('id', userId);
-    if (error) throw new Error(`recordPasswordReset: ${error.message}`);
-  }
-  async getProfileByLoginId(loginId: string): Promise<Profile | null> {
-    const { data, error } = await this.sb.from('profiles').select('*').eq('login_id', loginId).maybeSingle();
-    if (error) throw new Error(`getProfileByLoginId: ${error.message}`);
-    return data as Profile | null;
-  }
-
   // ---- addendum: workbook import -----------------------------------------
   async importApplicants(rows: ImportedApplicant[], actorId: string): Promise<ImportApplicantsResult> {
     const result: ImportApplicantsResult = { created: 0, updated: 0, skipped_duplicates: 0, errors: [], conflicts: [] };

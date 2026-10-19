@@ -8,6 +8,7 @@ export function Register() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [adminCode, setAdminCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -17,7 +18,12 @@ export function Register() {
     setBusy(true);
     setError(null);
     try {
-      const message = await register(fullName.trim(), email.trim(), password);
+      const message = await register(
+        fullName.trim(),
+        email.trim(),
+        password,
+        adminCode.trim() || undefined,
+      );
       if (message) {
         setNotice(message);
       } else {
@@ -60,6 +66,16 @@ export function Register() {
               required
               minLength={8}
               autoComplete="new-password"
+            />
+          </label>
+          <label className="field">
+            <span>Admin secret code (optional — administrators only)</span>
+            <input
+              type="password"
+              value={adminCode}
+              onChange={(e) => setAdminCode(e.target.value)}
+              placeholder="Leave blank to register as a judge"
+              autoComplete="off"
             />
           </label>
           <button className="btn" disabled={busy} style={{ width: '100%' }}>

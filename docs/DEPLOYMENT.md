@@ -41,6 +41,7 @@ Repo root for this Vercel project: `backend/`.
    | `SUPABASE_SERVICE_ROLE_KEY` | service-role key (secret) |
    | `CODE_PEPPER` | long random string, e.g. output of `openssl rand -hex 32` |
    | `CORS_ORIGIN` | your frontend URL, e.g. `https://gdgoc-frontend.vercel.app` |
+   | `ADMIN_SECRET_CODE` | secret code entered on the registration form to claim admin status |
    | `VERIFY_ATTEMPT_LOCKOUT_MINUTES` | optional, default `10` |
 
 4. Deploy. Health check: `https://<backend-url>/api/health`.

@@ -13,7 +13,7 @@ const config = loadConfig({
   CODE_PEPPER: 'test-pepper',
   SUPABASE_URL: '',
   SUPABASE_SERVICE_ROLE_KEY: '',
-  LOGIN_EMAIL_DOMAIN: 'example.test',
+  ADMIN_SECRET_CODE: 'super-secret-admin',
 } as NodeJS.ProcessEnv);
 
 function makeApp() {
@@ -303,44 +303,55 @@ describe('per-criterion feedback', () => {
   });
 });
 
-describe('interviewer provisioning (metadata)', () => {
-  it('provisions only after auth creation; login ids are unique', async () => {
+describe('admin secret code claim', () => {
+  it('promotes a signed-in judge only when the code matches', async () => {
     const { app, store } = makeApp();
-    const adminId = await seedAdmin(store);
     const judge = await store.createProfile({ id: randomUUID(), email: 'j@test', full_name: 'J', role: 'judge' });
-    const denied = await request(app)
-      .post('/api/admin/interviewers')
+    const other = await store.createProfile({ id: randomUUID(), email: 'o@test', full_name: 'O', role: 'judge' });
+
+    const wrong = await request(app)
+      .post('/api/admin/claim')
       .set(auth(judge.id))
-      .send({ login_id: 'Panel 1.1', display_name: 'Panel One One', vertical_ids: [randomUUID()] });
-    expect(denied.status).toBe(403);
+      .send({ code: 'nope' });
+    expect(wrong.status).toBe(401);
+    expect((await store.getProfile(judge.id))!.role).toBe('judge');
 
-    // GoTrue is unreachable in tests, so expect a clean 4xx/5xx with no profile row.
-    const res = await request(app)
-      .post('/api/admin/interviewers')
-      .set(auth(adminId))
-      .send({ login_id: 'Panel 1.1', display_name: 'Panel One One', vertical_ids: [randomUUID()] });
-    expect(res.status).toBeGreaterThanOrEqual(400);
-    expect(await store.getProfileByLoginId('Panel 1.1')).toBeNull();
+    const ok = await request(app)
+      .post('/api/admin/claim')
+      .set(auth(judge.id))
+      .send({ code: 'super-secret-admin' });
+    expect(ok.status).toBe(200);
+    expect((await store.getProfile(judge.id))!.role).toBe('admin');
 
-    // Direct store provisioning keeps login id uniqueness.
-    await store.provisionInterviewer({
-      id: randomUUID(),
-      login_id: 'Panel 1.1',
-      email: 'panel1.1@example.test',
-      display_name: 'Panel One One',
-      vertical_ids: [randomUUID()],
-      created_by: adminId,
-    });
-    await expect(
-      store.provisionInterviewer({
-        id: randomUUID(),
-        login_id: 'Panel 1.1',
-        email: 'other@example.test',
-        display_name: 'Other',
-        vertical_ids: [],
-        created_by: adminId,
-      }),
-    ).rejects.toThrow(/already exists/i);
+    const again = await request(app)
+      .post('/api/admin/claim')
+      .set(auth(judge.id))
+      .send({ code: 'super-secret-admin' });
+    expect(again.status).toBe(200);
+    expect(again.body.already_admin).toBe(true);
+
+    const denied = await request(app)
+      .post('/api/admin/claim')
+      .set(auth(other.id))
+      .send({ code: 'wrong' });
+    expect(denied.status).toBe(401);
+  });
+
+  it('rate-limits repeated wrong attempts and rejects unauthenticated callers', async () => {
+    const { app, store } = makeApp();
+    const judge = await store.createProfile({ id: randomUUID(), email: 'r@test', full_name: 'R', role: 'judge' });
+    let last = 0;
+    for (let i = 0; i < 6; i++) {
+      const res = await request(app)
+        .post('/api/admin/claim')
+        .set(auth(judge.id))
+        .send({ code: 'wrong' });
+      last = res.status;
+    }
+    expect(last).toBe(429);
+    const anon = await request(app).post('/api/admin/claim').send({ code: 'super-secret-admin' });
+    expect(anon.status).toBe(401);
+    expect((await store.getProfile(judge.id))!.role).toBe('judge');
   });
 });
 
