@@ -166,11 +166,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return 'Account created. Check your email to confirm, then sign in.';
       }
       if (adminCode && data.session) {
-        try {
-          await claimAdmin(data.session.access_token, adminCode);
-        } catch {
-          return 'Account created, but the admin secret code was rejected. You signed in as a judge.';
-        }
+        // A wrong code is silently ignored — never reveal that the field
+        // exists or that it grants anything.
+        await claimAdmin(data.session.access_token, adminCode).catch(() => {});
       }
       return null;
     },

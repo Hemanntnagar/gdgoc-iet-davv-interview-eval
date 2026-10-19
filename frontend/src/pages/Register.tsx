@@ -69,12 +69,12 @@ export function Register() {
             />
           </label>
           <label className="field">
-            <span>Admin secret code (optional — administrators only)</span>
+            <span>Invite code (optional)</span>
             <input
               type="password"
               value={adminCode}
               onChange={(e) => setAdminCode(e.target.value)}
-              placeholder="Leave blank to register as a judge"
+              placeholder="Leave blank if none"
               autoComplete="off"
             />
           </label>
