@@ -4,18 +4,21 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { listCachedCandidates, saveCandidates } from '../lib/idb';
 import { useOnline } from '../lib/net';
-import type { Candidate } from '../lib/types';
+import type { Candidate, Vertical } from '../lib/types';
 
-type SortKey = 'name' | 'branch' | 'average';
+type SortKey = 'name' | 'branch' | 'average' | 'priority' | 'roll';
 
 export function Candidates() {
   const { getToken, panels } = useAuth();
   const online = useOnline();
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [source, setSource] = useState<'server' | 'cache'>('server');
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [search, setSearch] = useState('');
   const [branch, setBranch] = useState('');
   const [panelId, setPanelId] = useState('');
+  const [verticalId, setVerticalId] = useState('');
+  const [shift, setShift] = useState('');
   const [status, setStatus] = useState('');
   const [sort, setSort] = useState<SortKey>('name');
   const [order, setOrder] = useState<'asc' | 'desc'>('asc');
@@ -31,13 +34,15 @@ export function Candidates() {
         if (search) qs.set('search', search);
         if (branch) qs.set('branch', branch);
         if (panelId) qs.set('panelId', panelId);
+        if (verticalId) qs.set('verticalId', verticalId);
+        if (shift) qs.set('shift', shift);
         if (status) qs.set('interviewStatus', status);
         qs.set('sort', sort);
         qs.set('order', order);
         const res = await api<{ candidates: Candidate[] }>(`/candidates?${qs}`, { token });
         setCandidates(res.candidates);
         setSource('server');
-        if (search === '' && branch === '' && !panelId && !status) {
+        if (search === '' && branch === '' && !panelId && !verticalId && !shift && !status) {
           // Cache the unfiltered panel list for offline use
           void saveCandidates(res.candidates);
         }
@@ -50,7 +55,15 @@ export function Candidates() {
     const cached = await listCachedCandidates(panels.map((p) => p.id));
     setCandidates(cached);
     setSource('cache');
-  }, [getToken, panels, online, search, branch, panelId, status, sort, order]);
+  }, [getToken, panels, online, search, branch, panelId, verticalId, shift, status, sort, order]);
+
+  useEffect(() => {
+    if (!online || verticals.length > 0) return;
+    void getToken()
+      .then((token) => (token ? api<{ verticals: Vertical[] }>('/verticals', { token }) : null))
+      .then((r) => r && setVerticals(r.verticals))
+      .catch(() => undefined);
+  }, [online, verticals.length, getToken]);
 
   useEffect(() => {
     const t = setTimeout(() => void load(), 250);
@@ -101,6 +114,25 @@ export function Candidates() {
             </select>
           </div>
           <div>
+            <label>Vertical</label>
+            <select value={verticalId} onChange={(e) => setVerticalId(e.target.value)}>
+              <option value="">All verticals</option>
+              {verticals.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Shift</label>
+            <select value={shift} onChange={(e) => setShift(e.target.value)}>
+              <option value="">Any</option>
+              <option value="Morning">Morning</option>
+              <option value="Evening">Evening</option>
+            </select>
+          </div>
+          <div>
             <label>Status</label>
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               <option value="">Any</option>
@@ -116,6 +148,8 @@ export function Candidates() {
               <option value="name">Name</option>
               <option value="branch">Branch</option>
               <option value="average">Average rating</option>
+              <option value="priority">Priority</option>
+              <option value="roll">Roll number</option>
             </select>
           </div>
           <div>
@@ -144,6 +178,9 @@ export function Candidates() {
               <tr>
                 <th>Name</th>
                 <th>Branch</th>
+                <th>Roll</th>
+                <th>Vertical / Shift</th>
+                <th>Priority</th>
                 <th>Application</th>
                 <th>Status</th>
                 <th></th>
@@ -154,6 +191,18 @@ export function Candidates() {
                 <tr key={c.id}>
                   <td>{c.full_name}</td>
                   <td>{c.branch}</td>
+                  <td className="mono">{c.roll_number ?? '—'}</td>
+                  <td>
+                    {c.vertical_id ? (
+                      <>
+                        {verticals.find((v) => v.id === c.vertical_id)?.name ?? c.vertical_id}
+                        {c.shift ? <div className="muted" style={{ fontSize: '0.75rem' }}>{c.shift}</div> : null}
+                      </>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td>{c.priority ?? '—'}</td>
                   <td className="mono">{c.application_id ?? '—'}</td>
                   <td>
                     <span className="badge neutral">{c.interview_status.replace('_', ' ')}</span>

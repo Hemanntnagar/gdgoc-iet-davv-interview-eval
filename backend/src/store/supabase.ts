@@ -8,6 +8,8 @@ import type {
   Criterion,
   CriterionScore,
   EvaluationWithScores,
+  ImportApplicantsResult,
+  ImportedApplicant,
   ImportResult,
   Panel,
   PanelCodeMeta,
@@ -19,6 +21,9 @@ import type {
   SubmitEvaluationInput,
   SubmitOutcome,
   VerifyOutcome,
+  Vertical,
+  SpreadsheetConnection,
+  SpreadsheetSyncItem,
 } from './types.js';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -325,18 +330,27 @@ export class SupabaseStore implements Store {
     q = this.scopeFilter(q, scope);
     if (!filters.includeArchived) q = q.is('archived_at', null);
     if (filters.panelId) q = q.eq('panel_id', filters.panelId);
+    if (filters.verticalId) q = q.eq('vertical_id', filters.verticalId);
+    if (filters.shift) q = q.eq('shift', filters.shift);
+    if (filters.priority !== undefined) q = q.eq('priority', filters.priority);
     if (filters.interviewStatus) q = q.eq('interview_status', filters.interviewStatus);
     if (filters.shortlistingStatus) q = q.eq('shortlisting_status', filters.shortlistingStatus);
     if (filters.evaluationStatus) q = q.eq('evaluation_status', filters.evaluationStatus);
     if (filters.branch) q = q.ilike('branch', `%${filters.branch}%`);
     if (filters.search) {
       const s = `%${filters.search}%`;
-      q = q.or(`full_name.ilike.${s},application_id.ilike.${s}`);
+      q = q.or(`full_name.ilike.${s},application_id.ilike.${s},roll_number.ilike.${s}`);
     }
     const asc = filters.order !== 'desc';
     switch (filters.sort) {
       case 'branch':
         q = q.order('branch', { ascending: asc }).order('full_name', { ascending: true });
+        break;
+      case 'priority':
+        q = q.order('priority', { ascending: asc, nullsFirst: false }).order('full_name', { ascending: true });
+        break;
+      case 'roll':
+        q = q.order('roll_number', { ascending: asc }).order('full_name', { ascending: true });
         break;
       case 'average':
         q = q.order('average_score', { ascending: asc, nullsFirst: false }).order('full_name', { ascending: true });
@@ -363,6 +377,24 @@ export class SupabaseStore implements Store {
       archived_at: r.archived_at ?? null,
       created_at: r.created_at ?? '',
       updated_at: r.updated_at ?? '',
+      vertical_id: r.vertical_id ?? null,
+      shift: r.shift ?? '',
+      priority: r.priority ?? null,
+      email: r.email ?? null,
+      roll_number: r.roll_number ?? null,
+      linkedin_url: r.linkedin_url ?? null,
+      github_url: r.github_url ?? null,
+      team_message: r.team_message ?? null,
+      remarks: r.remarks ?? null,
+      task_links: r.task_links ?? [],
+      external_profiles: r.external_profiles ?? [],
+      source_extra: r.source_extra ?? null,
+      source_key: r.source_key ?? null,
+      source_sheet: r.source_sheet ?? null,
+      source_row: r.source_row ?? null,
+      source_updated_at: r.source_updated_at ?? null,
+      imported_at: r.imported_at ?? null,
+      last_synced_at: r.last_synced_at ?? null,
     };
   }
   async getCandidate(id: string, scope: CandidateScope): Promise<Candidate | null> {
@@ -514,7 +546,11 @@ export class SupabaseStore implements Store {
     const judge = await this.getProfile((e as any).judge_id);
     return {
       ...(e as any),
-      scores: scores.map((s) => ({ criterion_id: s.criterion_id, score: Number(s.score) })),
+      scores: scores.map((s) => ({
+        criterion_id: s.criterion_id,
+        score: Number(s.score),
+        feedback: s.feedback ?? undefined,
+      })),
       judge_name: judge?.full_name,
     };
   }
@@ -638,6 +674,7 @@ export class SupabaseStore implements Store {
           evaluation_id: input.id,
           criterion_id: s.criterion_id,
           score: s.score,
+          feedback: s.feedback ?? null,
         })),
       );
       if (scoreErr) return { status: 'error', message: `Failed to save scores: ${scoreErr.message}` };
@@ -667,7 +704,12 @@ export class SupabaseStore implements Store {
     await this.sb.from('criterion_scores').delete().eq('evaluation_id', id);
     if (patch.scores.length > 0) {
       await this.sb.from('criterion_scores').insert(
-        patch.scores.map((s) => ({ evaluation_id: id, criterion_id: s.criterion_id, score: s.score })),
+        patch.scores.map((s) => ({
+          evaluation_id: id,
+          criterion_id: s.criterion_id,
+          score: s.score,
+          feedback: s.feedback ?? null,
+        })),
       );
     }
     const saved = await this.getEvaluation(id);
@@ -679,18 +721,27 @@ export class SupabaseStore implements Store {
     q = this.scopeFilter(q, scope);
     if (!filters.includeArchived) q = q.is('archived_at', null);
     if (filters.panelId) q = q.eq('panel_id', filters.panelId);
+    if (filters.verticalId) q = q.eq('vertical_id', filters.verticalId);
+    if (filters.shift) q = q.eq('shift', filters.shift);
+    if (filters.priority !== undefined) q = q.eq('priority', filters.priority);
     if (filters.interviewStatus) q = q.eq('interview_status', filters.interviewStatus);
     if (filters.shortlistingStatus) q = q.eq('shortlisting_status', filters.shortlistingStatus);
     if (filters.evaluationStatus) q = q.eq('evaluation_status', filters.evaluationStatus);
     if (filters.branch) q = q.ilike('branch', `%${filters.branch}%`);
     if (filters.search) {
       const s = `%${filters.search}%`;
-      q = q.or(`full_name.ilike.${s},application_id.ilike.${s}`);
+      q = q.or(`full_name.ilike.${s},application_id.ilike.${s},roll_number.ilike.${s}`);
     }
     const asc = filters.order !== 'desc';
     switch (filters.sort) {
       case 'branch':
         q = q.order('branch', { ascending: asc }).order('full_name', { ascending: true });
+        break;
+      case 'priority':
+        q = q.order('priority', { ascending: asc, nullsFirst: false }).order('full_name', { ascending: true });
+        break;
+      case 'roll':
+        q = q.order('roll_number', { ascending: asc }).order('full_name', { ascending: true });
         break;
       case 'average':
         q = q.order('average_score', { ascending: asc, nullsFirst: false }).order('full_name', { ascending: true });
@@ -707,12 +758,18 @@ export class SupabaseStore implements Store {
       full_name: r.full_name,
       branch: r.branch ?? '',
       application_id: r.application_id ?? null,
+      roll_number: r.roll_number ?? '',
       panel_id: r.panel_id,
       panel_name: r.panel_name ?? '',
       expected_evaluations: r.expected_evaluations ?? 1,
+      vertical_id: r.vertical_id ?? null,
+      vertical_name: r.vertical_name ?? null,
+      shift: r.shift ?? '',
+      priority: r.priority ?? null,
       interview_status: r.interview_status,
       shortlisting_status: r.shortlisting_status,
       evaluation_status: r.evaluation_status,
+      is_provisional: r.is_provisional ?? r.evaluation_status === 'in_progress',
       evaluation_count: r.evaluation_count ?? 0,
       average_score: r.average_score === null || r.average_score === undefined ? null : Number(r.average_score),
       archived_at: r.archived_at ?? null,
@@ -731,6 +788,391 @@ export class SupabaseStore implements Store {
       entity_id: entry.entity_id,
       details: entry.details,
     });
+  }
+
+  // ---- addendum: verticals ------------------------------------------------
+  async listVerticals(onlyActive = false): Promise<Vertical[]> {
+    let q = this.sb.from('verticals').select('*').order('sort_order');
+    if (onlyActive) q = q.eq('is_active', true);
+    return unwrap(await q, 'listVerticals') as Vertical[];
+  }
+  async getVertical(id: string): Promise<Vertical | null> {
+    const { data, error } = await this.sb.from('verticals').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(`getVertical: ${error.message}`);
+    return data as Vertical | null;
+  }
+  async createVertical(input: { key: string; name: string; worksheet?: string | null; sort_order?: number }): Promise<Vertical> {
+    return unwrap(
+      await this.sb
+        .from('verticals')
+        .insert({ key: input.key, name: input.name, worksheet: input.worksheet ?? null, sort_order: input.sort_order ?? null })
+        .select('*')
+        .single(),
+      'createVertical',
+    ) as Vertical;
+  }
+  async updateVertical(
+    id: string,
+    patch: Partial<{ name: string; worksheet: string | null; is_active: boolean; sort_order: number }>,
+  ): Promise<Vertical | null> {
+    const { data, error } = await this.sb.from('verticals').update(patch).eq('id', id).select('*').maybeSingle();
+    if (error) throw new Error(`updateVertical: ${error.message}`);
+    return data as Vertical | null;
+  }
+
+  // ---- addendum: interviewer provisioning --------------------------------
+  async provisionInterviewer(input: {
+    id: string;
+    login_id: string;
+    email: string;
+    display_name: string;
+    vertical_ids: string[];
+    panel_ids?: string[];
+    shift_restrictions?: string[];
+    created_by: string;
+  }): Promise<Profile> {
+    return unwrap(
+      await this.sb
+        .from('profiles')
+        .insert({
+          id: input.id,
+          email: input.email,
+          full_name: input.display_name,
+          role: 'judge',
+          is_active: true,
+          login_id: input.login_id,
+          display_name: input.display_name,
+          vertical_ids: input.vertical_ids,
+          panel_ids: input.panel_ids ?? [],
+          shift_restrictions: input.shift_restrictions ?? [],
+          created_by: input.created_by,
+        })
+        .select('*')
+        .single(),
+      'provisionInterviewer',
+    ) as Profile;
+  }
+  async updateInterviewer(
+    userId: string,
+    patch: Partial<{
+      display_name: string;
+      vertical_ids: string[];
+      panel_ids: string[];
+      shift_restrictions: string[];
+      is_active: boolean;
+    }>,
+  ): Promise<Profile | null> {
+    const dbPatch: Record<string, unknown> = { ...patch };
+    if (patch.display_name !== undefined) dbPatch.full_name = patch.display_name;
+    const { data, error } = await this.sb.from('profiles').update(dbPatch).eq('id', userId).select('*').maybeSingle();
+    if (error) throw new Error(`updateInterviewer: ${error.message}`);
+    return data as Profile | null;
+  }
+  async recordPasswordReset(userId: string): Promise<void> {
+    const { error } = await this.sb.from('profiles').update({ password_reset_at: new Date().toISOString() }).eq('id', userId);
+    if (error) throw new Error(`recordPasswordReset: ${error.message}`);
+  }
+  async getProfileByLoginId(loginId: string): Promise<Profile | null> {
+    const { data, error } = await this.sb.from('profiles').select('*').eq('login_id', loginId).maybeSingle();
+    if (error) throw new Error(`getProfileByLoginId: ${error.message}`);
+    return data as Profile | null;
+  }
+
+  // ---- addendum: workbook import -----------------------------------------
+  async importApplicants(rows: ImportedApplicant[], actorId: string): Promise<ImportApplicantsResult> {
+    const result: ImportApplicantsResult = { created: 0, updated: 0, skipped_duplicates: 0, errors: [], conflicts: [] };
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const sheetKey = `${row.sourceSheet}::${row.sourceKey}`;
+      if (seen.has(sheetKey)) {
+        result.skipped_duplicates += 1;
+        continue;
+      }
+      seen.add(sheetKey);
+      if (!row.full_name) {
+        result.errors.push({ row: row.sourceRow, sheet: row.sourceSheet, reason: 'missing applicant name' });
+        continue;
+      }
+      const verticalId = await this.verticalIdForSheet(row.sourceSheet);
+      const panelId = await this.resolvePanelForImport(row.panel, row.shift);
+      // 1) exact (sheet, key) match
+      let match = await this.sb
+        .from('candidates')
+        .select('*')
+        .eq('source_sheet', row.sourceSheet)
+        .eq('source_key', row.sourceKey)
+        .maybeSingle();
+      let existing = match.data ?? null;
+      // 2) roll number / application_id
+      if (!existing && row.roll_number) {
+        const m2 = await this.sb
+          .from('candidates')
+          .select('*')
+          .or(`application_id.eq.${row.roll_number},roll_number.eq.${row.roll_number}`)
+          .limit(1)
+          .maybeSingle();
+        existing = m2.data ?? null;
+      }
+      // 3) email
+      if (!existing && row.email) {
+        const m3 = await this.sb.from('candidates').select('*').eq('email', row.email).limit(1).maybeSingle();
+        existing = m3.data ?? null;
+      }
+
+      if (!existing) {
+        const { error } = await this.sb.from('candidates').insert({
+          full_name: row.full_name,
+          branch: row.branch,
+          application_id: row.roll_number || null,
+          panel_id: panelId,
+          interview_status: 'pending',
+          shortlisting_status: 'pending',
+          notes: '',
+          archived_at: null,
+          created_by: actorId,
+          vertical_id: verticalId,
+          shift: row.shift,
+          priority: row.priority,
+          email: row.email,
+          roll_number: row.roll_number,
+          linkedin_url: row.linkedin_url,
+          github_url: row.github_url,
+          team_message: row.team_message,
+          remarks: row.remarks,
+          task_links: row.task_links,
+          external_profiles: row.external_profiles,
+          source_extra: row.source_extra,
+          source_key: row.sourceKey,
+          source_sheet: row.sourceSheet,
+          source_row: row.sourceRow,
+          last_synced_at: new Date().toISOString(),
+        });
+        if (error) {
+          result.errors.push({ row: row.sourceRow, sheet: row.sourceSheet, reason: error.message });
+          continue;
+        }
+        result.created += 1;
+        continue;
+      }
+
+      const patch: Record<string, unknown> = {};
+      const pick = (cur: string | null | undefined, incoming: string): string =>
+        incoming && incoming.trim() ? incoming : (cur ?? '');
+      const beforeName = existing.full_name ?? '';
+      const afterName = pick(beforeName, row.full_name);
+      if (afterName !== beforeName) patch.full_name = afterName;      const afterBranch = pick(existing.branch ?? '', row.branch);
+      if (afterBranch !== (existing.branch ?? '')) patch.branch = afterBranch;
+      if (row.roll_number) {
+        patch.roll_number = row.roll_number;
+        patch.application_id = row.roll_number;
+      }
+      const afterEmail = pick(existing.email ?? '', row.email);
+      if (afterEmail !== (existing.email ?? '')) patch.email = afterEmail;
+      const afterShift = pick(existing.shift ?? '', row.shift);
+      if (afterShift !== (existing.shift ?? '')) patch.shift = afterShift;
+      if (row.priority !== null) patch.priority = row.priority;
+      const afterLi = pick(existing.linkedin_url ?? '', row.linkedin_url);
+      if (afterLi !== (existing.linkedin_url ?? '')) patch.linkedin_url = afterLi;
+      const afterGh = pick(existing.github_url ?? '', row.github_url);
+      if (afterGh !== (existing.github_url ?? '')) patch.github_url = afterGh;
+      const afterMsg = pick(existing.team_message ?? '', row.team_message);
+      if (afterMsg !== (existing.team_message ?? '')) patch.team_message = afterMsg;
+      const afterRemarks = pick(existing.remarks ?? '', row.remarks);
+      if (afterRemarks !== (existing.remarks ?? '')) patch.remarks = afterRemarks;
+      if (row.task_links.length) patch.task_links = row.task_links;
+      if (row.external_profiles.length) patch.external_profiles = row.external_profiles;
+      if (row.source_extra && Object.keys(row.source_extra).length) {
+        patch.source_extra = { ...(existing.source_extra ?? {}), ...row.source_extra };
+      }
+      if (!existing.source_key) patch.source_key = row.sourceKey;
+      if (!existing.source_sheet) patch.source_sheet = row.sourceSheet;
+      patch.source_row = row.sourceRow;
+      patch.last_synced_at = new Date().toISOString();
+
+      if (patch.full_name && beforeName && patch.full_name !== beforeName) {
+        result.conflicts.push({
+          row: row.sourceRow,
+          sheet: row.sourceSheet,
+          field: 'full_name',
+          kept: afterName,
+          incoming: row.full_name,
+        });
+      }
+      if (Object.keys(patch).length > 0) {
+        const { error } = await this.sb.from('candidates').update(patch).eq('id', existing.id);
+        if (error) {
+          result.errors.push({ row: row.sourceRow, sheet: row.sourceSheet, reason: error.message });
+          continue;
+        }
+      }
+      result.updated += 1;
+    }
+    return result;
+  }
+
+  private async verticalIdForSheet(sheetName: string): Promise<string | null> {
+    const { data } = await this.sb.from('verticals').select('*');
+    const norm = sheetName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    for (const v of (data ?? []) as Vertical[]) {
+      if (v.worksheet && v.worksheet.toLowerCase() === sheetName.toLowerCase()) return v.id;
+      if (v.key === norm || v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === norm) return v.id;
+    }
+    return null;
+  }
+
+  private async resolvePanelForImport(panelName: string, shift: string): Promise<string> {
+    const name = (panelName || '').trim();
+    if (name) {
+      const { data } = await this.sb.from('panels').select('*').ilike('name', name).limit(1).maybeSingle();
+      if (data) return data.id;
+      const created = unwrap(
+        await this.sb
+          .from('panels')
+          .insert({ name, is_active: true, expected_evaluations: 1, shift: shift || null })
+          .select('*')
+          .single(),
+        'resolvePanelForImport',
+      ) as Panel;
+      return created.id;
+    }
+    const { data } = await this.sb.from('panels').select('*').eq('name', 'Imported').limit(1).maybeSingle();
+    if (data) return data.id;
+    const created = unwrap(
+      await this.sb
+        .from('panels')
+        .insert({ name: 'Imported', is_active: true, expected_evaluations: 1 })
+        .select('*')
+        .single(),
+      'resolvePanelForImport',
+    ) as Panel;
+    return created.id;
+  }
+
+  // ---- addendum: spreadsheet sync queue ----------------------------------
+  async enqueueSpreadsheetSync(item: {
+    direction: 'to_sheet' | 'from_sheet';
+    entity_type: 'applicant' | 'evaluation';
+    entity_id: string;
+    worksheet: string;
+    row_key: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    const { data: existing } = await this.sb
+      .from('sync_queue')
+      .select('*')
+      .eq('direction', item.direction)
+      .eq('entity_type', item.entity_type)
+      .eq('entity_id', item.entity_id)
+      .eq('status', 'pending')
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      const { error } = await this.sb
+        .from('sync_queue')
+        .update({ payload: item.payload, worksheet: item.worksheet, row_key: item.row_key, updated_at: new Date().toISOString() })
+        .eq('id', existing.id);
+      if (error) throw new Error(`enqueueSpreadsheetSync: ${error.message}`);
+      return;
+    }
+    const { error } = await this.sb.from('sync_queue').insert({
+      direction: item.direction,
+      entity_type: item.entity_type,
+      entity_id: item.entity_id,
+      worksheet: item.worksheet,
+      row_key: item.row_key,
+      payload: item.payload,
+      status: 'pending',
+      attempts: 0,
+    });
+    if (error) throw new Error(`enqueueSpreadsheetSync: ${error.message}`);
+  }
+  async claimSpreadsheetSync(limit: number): Promise<SpreadsheetSyncItem[]> {
+    const stale = new Date(Date.now() - 60_000).toISOString();
+    const { data, error } = await this.sb
+      .from('sync_queue')
+      .select('*')
+      .or(`status.eq.pending,and(status.eq.in_flight,updated_at.lt.${stale})`)
+      .order('created_at')
+      .limit(limit);
+    if (error) throw new Error(`claimSpreadsheetSync: ${error.message}`);
+    const rows = (data ?? []) as SpreadsheetSyncItem[];
+    if (rows.length === 0) return [];
+    const { data: claimed, error: cErr } = await this.sb
+      .from('sync_queue')
+      .update({ status: 'in_flight', updated_at: new Date().toISOString() })
+      .in(
+        'id',
+        rows.map((r) => r.id),
+      )
+      .select('*');
+    if (cErr) throw new Error(`claimSpreadsheetSync: ${cErr.message}`);
+    return (claimed ?? []) as SpreadsheetSyncItem[];
+  }
+  async completeSpreadsheetSync(
+    id: string,
+    status: 'done' | 'failed' | 'conflict',
+    detail: { error?: string; conflict?: Record<string, unknown> },
+  ): Promise<void> {
+    const patch: Record<string, unknown> = {
+      status,
+      last_error: detail.error ?? '',
+      conflict: detail.conflict ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    if (status === 'done') patch.payload = {};
+    const { error } = await this.sb.from('sync_queue').update(patch).eq('id', id);
+    if (error) throw new Error(`completeSpreadsheetSync: ${error.message}`);
+  }
+  async listSpreadsheetSync(status?: string): Promise<SpreadsheetSyncItem[]> {
+    let q = this.sb.from('sync_queue').select('*').order('created_at');
+    if (status) q = q.eq('status', status);
+    return unwrap(await q, 'listSpreadsheetSync') as SpreadsheetSyncItem[];
+  }
+  async getSpreadsheetConnection(): Promise<SpreadsheetConnection | null> {
+    const { data, error } = await this.sb.from('spreadsheet_connections').select('*').limit(1).maybeSingle();
+    if (error) throw new Error(`getSpreadsheetConnection: ${error.message}`);
+    return data as SpreadsheetConnection | null;
+  }
+  async saveSpreadsheetConnection(patch: Partial<SpreadsheetConnection>): Promise<SpreadsheetConnection> {
+    const existing = await this.getSpreadsheetConnection();
+    if (existing) {
+      const { data, error } = await this.sb
+        .from('spreadsheet_connections')
+        .update(patch)
+        .eq('id', existing.id)
+        .select('*')
+        .single();
+      if (error) throw new Error(`saveSpreadsheetConnection: ${error.message}`);
+      return data as SpreadsheetConnection;
+    }
+    const { data, error } = await this.sb
+      .from('spreadsheet_connections')
+      .insert({
+        kind: patch.kind ?? 'google_sheets',
+        spreadsheet_id: patch.spreadsheet_id ?? '',
+        title: patch.title ?? '',
+        header_row: patch.header_row ?? 1,
+        is_active: patch.is_active ?? true,
+        last_sync_status: patch.last_sync_status ?? 'never',
+        last_sync_error: patch.last_sync_error ?? '',
+        sheet_revision: patch.sheet_revision ?? '',
+      })
+      .select('*')
+      .single();
+    if (error) throw new Error(`saveSpreadsheetConnection: ${error.message}`);
+    return data as SpreadsheetConnection;
+  }
+  async logSpreadsheetSync(entry: {
+    connection_id: string | null;
+    direction: string;
+    operation: string;
+    row_key: string;
+    status: 'ok' | 'error' | 'conflict';
+    detail: string;
+    actor_id: string | null;
+  }): Promise<void> {
+    const { error } = await this.sb.from('spreadsheet_sync_log').insert(entry);
+    if (error) throw new Error(`logSpreadsheetSync: ${error.message}`);
   }
 }
 

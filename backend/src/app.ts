@@ -14,6 +14,11 @@ import { evaluationRoutes } from './routes/evaluations.js';
 import { syncRoutes } from './routes/sync.js';
 import { resultRoutes } from './routes/results.js';
 import { adminRoutes } from './routes/admin.js';
+import { verticalRoutes } from './routes/verticals.js';
+import { interviewerRoutes } from './routes/interviewers.js';
+import { applicantImportRoutes } from './routes/admin-applicants.js';
+import { sheetSyncRoutes } from './routes/sheets.js';
+import { reportRoutes } from './routes/reports.js';
 import type { Store } from './store/types.js';
 
 export interface AppDeps {
@@ -61,6 +66,11 @@ export function createApp(deps: AppDeps): express.Express {
   app.use('/api', auth, syncRoutes(deps.store));
   app.use('/api', auth, resultRoutes(deps.store));
   app.use('/api', auth, adminRoutes(deps.store));
+  app.use('/api', auth, verticalRoutes(deps.store));
+  app.use('/api', auth, interviewerRoutes(deps.store, deps.config));
+  app.use('/api', auth, applicantImportRoutes(deps.store));
+  app.use('/api', auth, sheetSyncRoutes(deps.store, deps.config));
+  app.use('/api', auth, reportRoutes(deps.store));
 
   app.use((_req, res) => {
     res.status(404).json({ error: { code: 'not_found', message: 'Route not found' } });

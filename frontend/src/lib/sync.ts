@@ -101,6 +101,7 @@ export class SyncEngine {
                 feedback: item.feedback,
                 overall_score: item.overall_score,
                 scores: item.scores,
+                criterion_feedbacks: item.criterion_feedbacks ?? {},
                 client_created_at: item.client_created_at,
                 replace_existing: true,
               })),

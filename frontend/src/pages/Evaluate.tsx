@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
-  getOutboxItem,
   listCachedCandidates,
   listCachedCriteria,
   listCachedRounds,
@@ -12,8 +11,12 @@ import {
   setMeta,
 } from '../lib/idb';
 import { useOnline } from '../lib/net';
+import { meanOf, displayScore } from '../lib/rubric';
 import { useSync } from '../lib/syncContext';
-import type { Candidate, Criterion, OutboxItem, Round } from '../lib/types';
+import type { Candidate, Criterion, OutboxItem, Round, Vertical } from '../lib/types';
+import { StarRating } from '../components/eval/StarRating';
+import { ConfirmDialog } from '../components/Ui';
+import { CandidateProfile } from '../components/eval/CandidateProfile';
 
 export function Evaluate() {
   const { id } = useParams<{ id: string }>();
@@ -24,15 +27,18 @@ export function Evaluate() {
 
   const [candidate, setCandidate] = useState<Candidate | null>(null);
   const [rounds, setRounds] = useState<Round[]>([]);
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [roundId, setRoundId] = useState('');
   const [criteria, setCriteria] = useState<Criterion[]>([]);
-  const [scores, setScores] = useState<Record<string, string>>({});
+  const [scores, setScores] = useState<Record<string, number | null>>({});
+  const [criterionFeedbacks, setCriterionFeedbacks] = useState<Record<string, string>>({});
   const [overall, setOverall] = useState('');
   const [feedback, setFeedback] = useState('');
   const [existingLocal, setExistingLocal] = useState<OutboxItem | null>(null);
   const [message, setMessage] = useState<{ kind: 'ok' | 'err' | 'info' | 'warn'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const loadCandidate = useCallback(async () => {
     if (!id) return;
@@ -100,6 +106,20 @@ export function Evaluate() {
     })();
   }, [roundId, online, getToken]);
 
+  useEffect(() => {
+    void (async () => {
+      if (!online) return;
+      try {
+        const token = await getToken();
+        if (!token) return;
+        const res = await api<{ verticals: Vertical[] }>('/verticals', { token });
+        setVerticals(res.verticals);
+      } catch {
+        /* verticals are cosmetic here */
+      }
+    })();
+  }, [online, getToken]);
+
   // Existing unsynced local evaluation for this candidate+round
   useEffect(() => {
     void (async () => {
@@ -111,24 +131,30 @@ export function Evaluate() {
       if (match) {
         setFeedback(match.feedback);
         if (match.overall_score !== null) setOverall(String(match.overall_score));
-        const s: Record<string, string> = {};
-        for (const [k, v] of Object.entries(match.scores)) s[k] = String(v);
+        const s: Record<string, number | null> = {};
+        for (const [k, v] of Object.entries(match.scores)) s[k] = v;
         setScores(s);
+        setCriterionFeedbacks({ ...(match.criterion_feedbacks ?? {}) });
       } else {
         setFeedback('');
         setOverall('');
         setScores({});
+        setCriterionFeedbacks({});
       }
     })();
   }, [id, roundId]);
+
+  const individual = useMemo(() => {
+    const rated = criteria.map((c) => scores[c.id]).filter((s): s is number => typeof s === 'number');
+    return meanOf(rated);
+  }, [criteria, scores]);
 
   const validate = (): string | null => {
     if (!roundId) return 'Select an interview round';
     if (criteria.length > 0) {
       for (const c of criteria) {
-        const raw = scores[c.id];
-        const n = Number(raw);
-        if (raw === undefined || raw === '' || Number.isNaN(n)) return `Score required: ${c.name}`;
+        const n = scores[c.id];
+        if (typeof n !== 'number') return `Rate every criterion — starting with: ${c.name}`;
         if (n < c.min_score || n > c.max_score) {
           return `${c.name} must be between ${c.min_score} and ${c.max_score}`;
         }
@@ -143,7 +169,10 @@ export function Evaluate() {
   const buildPayload = (itemId: string): OutboxItem => {
     const round = rounds.find((r) => r.id === roundId);
     const sc: Record<string, number> = {};
-    for (const c of criteria) sc[c.id] = Number(scores[c.id]);
+    for (const c of criteria) {
+      const v = scores[c.id];
+      if (typeof v === 'number') sc[c.id] = v;
+    }
     const numericScores = Object.values(sc);
     const computedOverall =
       criteria.length > 0
@@ -159,6 +188,11 @@ export function Evaluate() {
       feedback: feedback.trim(),
       overall_score: computedOverall,
       scores: sc,
+      criterion_feedbacks: Object.fromEntries(
+        Object.entries(criterionFeedbacks)
+          .filter(([, v]) => v.trim())
+          .map(([k, v]) => [k, v.trim()]),
+      ),
       client_created_at: new Date().toISOString(),
       status: 'pending',
       attempts: existingLocal?.attempts ?? 0,
@@ -178,13 +212,7 @@ export function Evaluate() {
     }
   };
 
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const problem = validate();
-    if (problem) {
-      setMessage({ kind: 'err', text: problem });
-      return;
-    }
+  const doSubmit = async () => {
     setBusy(true);
     setMessage(null);
     const itemId = existingLocal?.id ?? crypto.randomUUID();
@@ -195,7 +223,6 @@ export function Evaluate() {
       }
       const token = await getToken();
       if (!token) {
-        // No fresh auth — persist locally rather than losing the evaluation.
         await saveLocally(itemId);
         setMessage({ kind: 'warn', text: 'Session expired — evaluation saved locally. Sign in again to sync.' });
         return;
@@ -212,6 +239,7 @@ export function Evaluate() {
             feedback: payload.feedback,
             overall_score: criteria.length === 0 ? payload.overall_score : null,
             scores: payload.scores,
+            criterion_feedbacks: payload.criterion_feedbacks,
             client_created_at: payload.client_created_at,
             replace_existing: rounds.find((r) => r.id === roundId)?.allow_edit_after_submit ?? false,
           }),
@@ -234,7 +262,6 @@ export function Evaluate() {
           await saveLocally(itemId);
           return;
         }
-        // Any other network/server failure: keep the evaluation locally.
         await saveLocally(itemId);
         if (err instanceof ApiError && err.details) {
           const details = err.details as Record<string, string>;
@@ -251,7 +278,19 @@ export function Evaluate() {
       }
     } finally {
       setBusy(false);
+      setConfirmOpen(false);
     }
+  };
+
+  const onSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const problem = validate();
+    if (problem) {
+      setMessage({ kind: 'err', text: problem });
+      return;
+    }
+    // Confirmation step before the official submission is locked in.
+    setConfirmOpen(true);
   };
 
   if (!candidate) {
@@ -261,6 +300,14 @@ export function Evaluate() {
       </div>
     );
   }
+
+  const criterionFeedbackCount = Object.values(criterionFeedbacks).filter((v) => v.trim()).length;
+
+  const confirmSummary =
+    criteria.length > 0
+      ? `${candidate.full_name}: individual score ${displayScore(individual)} (${criteria.length} criteria × 1–5 stars)` +
+        (criterionFeedbackCount > 0 ? `, ${criterionFeedbackCount} written note${criterionFeedbackCount > 1 ? 's' : ''}` : '')
+      : `${candidate.full_name}: overall score ${overall}`;
 
   return (
     <>
@@ -272,9 +319,16 @@ export function Evaluate() {
       <h1>{candidate.full_name}</h1>
       <p className="muted">
         {candidate.branch}
+        {candidate.roll_number ? ` · ${candidate.roll_number}` : ''}
         {candidate.application_id ? ` · ${candidate.application_id}` : ''} ·{' '}
         <span className="badge neutral">{candidate.interview_status.replace('_', ' ')}</span>
+        {candidate.priority ? <span className="badge blue">Priority {candidate.priority}</span> : null}
       </p>
+
+      <CandidateProfile
+        candidate={candidate}
+        verticalName={verticals.find((v) => v.id === candidate.vertical_id)?.name ?? null}
+      />
 
       {message && (
         <div
@@ -286,7 +340,7 @@ export function Evaluate() {
         </div>
       )}
 
-      <form className="card" onSubmit={submit}>
+      <form className="card" onSubmit={onSubmit}>
         <label className="field">
           <span>Interview round</span>
           <select value={roundId} onChange={(e) => setRoundId(e.target.value)} required>
@@ -302,26 +356,35 @@ export function Evaluate() {
 
         {criteria.length > 0 ? (
           <div>
-            <h3>Rubric</h3>
+            <div className="btn-row" style={{ alignItems: 'baseline', justifyContent: 'space-between' }}>
+              <h3 style={{ margin: 0 }}>Rubric (1–5 stars)</h3>
+              <span className="badge blue" data-testid="individual-score">
+                Individual score: {displayScore(individual)}
+              </span>
+            </div>
             {criteria.map((c) => (
               <div className="score-row" key={c.id}>
-                <div>
+                <div style={{ flex: 1 }}>
                   <strong>{c.name}</strong>
                   {c.description && <div className="muted">{c.description}</div>}
-                  <div className="muted">
-                    {c.min_score}–{c.max_score}
-                    {Number(c.weight) !== 1 ? ` · weight ${c.weight}` : ''}
-                  </div>
+                  <StarRating
+                    value={scores[c.id] ?? null}
+                    onChange={(v) => setScores((s) => ({ ...s, [c.id]: v }))}
+                    label={c.name}
+                  />
+                  <label className="field" style={{ marginTop: '0.4rem' }}>
+                    <span className="muted" style={{ fontSize: '0.8rem' }}>
+                      Notes for this criterion (optional)
+                    </span>
+                    <textarea
+                      rows={2}
+                      maxLength={2000}
+                      value={criterionFeedbacks[c.id] ?? ''}
+                      onChange={(e) => setCriterionFeedbacks((f) => ({ ...f, [c.id]: e.target.value }))}
+                      placeholder={`What stood out about ${c.name.toLowerCase()}?`}
+                    />
+                  </label>
                 </div>
-                <input
-                  type="number"
-                  min={c.min_score}
-                  max={c.max_score}
-                  step="any"
-                  value={scores[c.id] ?? ''}
-                  onChange={(e) => setScores((s) => ({ ...s, [c.id]: e.target.value }))}
-                  required
-                />
               </div>
             ))}
           </div>
@@ -341,7 +404,7 @@ export function Evaluate() {
         )}
 
         <label className="field mt">
-          <span>Written feedback (optional)</span>
+          <span>Overall written feedback (optional)</span>
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
@@ -371,6 +434,19 @@ export function Evaluate() {
           )}
         </div>
       </form>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Submit evaluation?"
+        message={`${confirmSummary}. ${
+          rounds.find((r) => r.id === roundId)?.allow_edit_after_submit
+            ? 'This round allows later edits.'
+            : 'This cannot be changed after submission unless edits are enabled for the round.'
+        }`}
+        confirmLabel="Submit"
+        onConfirm={() => void doSubmit()}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </>
   );
 }

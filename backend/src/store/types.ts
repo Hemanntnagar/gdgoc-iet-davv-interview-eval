@@ -1,5 +1,14 @@
 export type Role = 'judge' | 'admin';
 
+export interface Vertical {
+  id: string;
+  key: string;
+  name: string;
+  worksheet: string | null;
+  is_active: boolean;
+  sort_order: number;
+}
+
 export interface Profile {
   id: string;
   email: string;
@@ -7,6 +16,12 @@ export interface Profile {
   role: Role;
   is_active: boolean;
   created_at: string;
+  login_id?: string | null;
+  display_name?: string;
+  vertical_ids?: string[];
+  panel_ids?: string[];
+  shift_restrictions?: string[];
+  password_reset_at?: string | null;
 }
 
 export interface Panel {
@@ -15,6 +30,10 @@ export interface Panel {
   is_active: boolean;
   expected_evaluations: number;
   created_at: string;
+  vertical_id?: string | null;
+  shift?: string;
+  panel_number?: number | null;
+  description?: string;
 }
 
 export interface PanelCodeMeta {
@@ -31,6 +50,11 @@ export interface PanelCodeMeta {
   code_preview: string; // short non-reversible display hint, e.g. "••••ABCD"
 }
 
+export interface TaskLink {
+  label: string;
+  url: string;
+}
+
 export interface Candidate {
   id: string;
   full_name: string;
@@ -43,6 +67,25 @@ export interface Candidate {
   archived_at: string | null;
   created_at: string;
   updated_at: string;
+  // addendum: expanded applicant profile (workbook columns)
+  vertical_id?: string | null;
+  shift?: string | null;
+  priority?: number | null;
+  email?: string | null;
+  roll_number?: string | null;
+  linkedin_url?: string | null;
+  github_url?: string | null;
+  team_message?: string | null;
+  remarks?: string | null;
+  task_links?: TaskLink[];
+  external_profiles?: TaskLink[];
+  source_extra?: Record<string, unknown>;
+  source_key?: string | null;
+  source_sheet?: string | null;
+  source_row?: number | null;
+  source_updated_at?: string | null;
+  imported_at?: string | null;
+  last_synced_at?: string | null;
 }
 
 export interface Round {
@@ -68,6 +111,7 @@ export interface Criterion {
 export interface CriterionScore {
   criterion_id: string;
   score: number;
+  feedback?: string;
 }
 
 export interface Evaluation {
@@ -106,12 +150,18 @@ export interface ResultRow {
   full_name: string;
   branch: string;
   application_id: string | null;
+  roll_number?: string;
   panel_id: string;
   panel_name: string;
   expected_evaluations: number;
+  vertical_id?: string | null;
+  vertical_name?: string | null;
+  shift?: string;
+  priority?: number | null;
   interview_status: string;
   shortlisting_status: string;
   evaluation_status: 'not_started' | 'in_progress' | 'complete';
+  is_provisional?: boolean;
   evaluation_count: number;
   average_score: number | null;
   judge_ratings: JudgeRating[];
@@ -122,10 +172,13 @@ export interface CandidateFilters {
   search?: string;
   branch?: string;
   panelId?: string;
+  verticalId?: string;
+  shift?: string;
+  priority?: number;
   interviewStatus?: string;
   shortlistingStatus?: string;
   evaluationStatus?: string;
-  sort?: 'name' | 'branch' | 'average' | 'created';
+  sort?: 'name' | 'branch' | 'average' | 'created' | 'priority' | 'roll';
   order?: 'asc' | 'desc';
   includeArchived?: boolean;
 }
@@ -143,6 +196,7 @@ export interface SubmitEvaluationInput {
   feedback: string;
   overall_score?: number | null; // used when round has no active criteria
   scores: Record<string, number>; // criterion_id -> score
+  criterion_feedbacks?: Record<string, string>; // criterion_id -> written feedback
   client_created_at?: string | null;
 }
 
@@ -161,6 +215,66 @@ export interface ImportResult {
   imported: number;
   skipped_duplicates: number;
   errors: ImportRowResult[];
+}
+
+/** A parsed workbook row ready for the upsert layer. */
+export interface ImportedApplicant {
+  sourceSheet: string;
+  sourceRow: number;
+  sourceKey: string;
+  keyMethod: 'roll' | 'email' | 'name';
+  full_name: string;
+  roll_number: string;
+  email: string;
+  branch: string;
+  panel: string;
+  shift: string;
+  priority: number | null;
+  linkedin_url: string;
+  github_url: string;
+  team_message: string;
+  remarks: string;
+  task_links: TaskLink[];
+  external_profiles: TaskLink[];
+  source_extra: Record<string, unknown>;
+}
+
+export interface ImportApplicantsResult {
+  created: number;
+  updated: number;
+  skipped_duplicates: number;
+  errors: { row: number; sheet: string; reason: string }[];
+  /** rows whose source identity matched but conflicting core values were kept */
+  conflicts: { row: number; sheet: string; field: string; kept: string; incoming: string }[];
+}
+
+export interface SpreadsheetSyncItem {
+  id: string;
+  direction: 'to_sheet' | 'from_sheet';
+  entity_type: 'applicant' | 'evaluation';
+  entity_id: string;
+  worksheet: string;
+  row_key: string;
+  payload: Record<string, unknown>;
+  status: 'pending' | 'in_flight' | 'done' | 'failed' | 'conflict';
+  attempts: number;
+  last_error: string;
+  conflict: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpreadsheetConnection {
+  id: string;
+  kind: 'google_sheets' | 'excel_upload';
+  spreadsheet_id: string;
+  title: string;
+  header_row: number;
+  is_active: boolean;
+  last_sync_at: string | null;
+  last_sync_status: 'never' | 'ok' | 'error';
+  last_sync_error: string;
+  sheet_revision: string;
 }
 
 export type VerifyOutcome =
@@ -188,6 +302,42 @@ export interface Store {
   createProfile(input: { id: string; email: string; full_name: string; role: Role }): Promise<Profile>;
   setProfileRole(userId: string, role: Role): Promise<Profile | null>;
   setProfileActive(userId: string, isActive: boolean): Promise<Profile | null>;
+
+  // --- addendum: verticals ---
+  listVerticals(onlyActive?: boolean): Promise<Vertical[]>;
+  getVertical(id: string): Promise<Vertical | null>;
+  createVertical(input: { key: string; name: string; worksheet?: string | null; sort_order?: number }): Promise<Vertical>;
+  updateVertical(
+    id: string,
+    patch: Partial<{ name: string; worksheet: string | null; is_active: boolean; sort_order: number }>,
+  ): Promise<Vertical | null>;
+
+  // --- addendum: interviewer account provisioning ---
+  /** Provision a login_id account. The caller (Supabase-backed auth) creates the
+   *  auth user; this records the profile metadata. Plaintext passwords never
+   *  touch the store. */
+  provisionInterviewer(input: {
+    id: string;
+    login_id: string;
+    email: string;
+    display_name: string;
+    vertical_ids: string[];
+    panel_ids?: string[];
+    shift_restrictions?: string[];
+    created_by: string;
+  }): Promise<Profile>;
+  updateInterviewer(
+    userId: string,
+    patch: Partial<{
+      display_name: string;
+      vertical_ids: string[];
+      panel_ids: string[];
+      shift_restrictions: string[];
+      is_active: boolean;
+    }>,
+  ): Promise<Profile | null>;
+  recordPasswordReset(userId: string): Promise<void>;
+  getProfileByLoginId(loginId: string): Promise<Profile | null>;
 
   listPanels(): Promise<Panel[]>;
   getPanel(id: string): Promise<Panel | null>;
@@ -231,21 +381,49 @@ export interface Store {
   ): Promise<Candidate>;
   updateCandidate(
     id: string,
-    patch: Partial<{
-      full_name: string;
-      branch: string;
-      application_id: string | null;
-      panel_id: string;
-      interview_status: string;
-      shortlisting_status: string;
-      notes: string;
-    }>,
+    patch: Partial<Omit<Candidate, 'id'>>,
   ): Promise<Candidate | null>;
   archiveCandidate(id: string, archived: boolean): Promise<Candidate | null>;
   bulkCreateCandidates(
     rows: { full_name: string; branch: string; application_id: string | null; panel_id: string }[],
     actorId: string,
   ): Promise<ImportResult>;
+
+  // --- addendum: workbook import with stable identity ---
+  /** Upsert parsed applicants. Matching order: (source_sheet, source_key),
+   *  then application_id/roll_number, then email. Existing rows are updated
+   *  field-by-field (never wiped); returns per-row outcomes. */
+  importApplicants(
+    rows: ImportedApplicant[],
+    actorId: string,
+  ): Promise<ImportApplicantsResult>;
+
+  // --- addendum: spreadsheet sync queue ---
+  enqueueSpreadsheetSync(item: {
+    direction: 'to_sheet' | 'from_sheet';
+    entity_type: 'applicant' | 'evaluation';
+    entity_id: string;
+    worksheet: string;
+    row_key: string;
+    payload: Record<string, unknown>;
+  }): Promise<void>;
+  claimSpreadsheetSync(limit: number): Promise<SpreadsheetSyncItem[]>;
+  completeSpreadsheetSync(id: string, status: 'done' | 'failed' | 'conflict', detail: {
+    error?: string;
+    conflict?: Record<string, unknown>;
+  }): Promise<void>;
+  listSpreadsheetSync(status?: string): Promise<SpreadsheetSyncItem[]>;
+  getSpreadsheetConnection(): Promise<SpreadsheetConnection | null>;
+  saveSpreadsheetConnection(patch: Partial<SpreadsheetConnection>): Promise<SpreadsheetConnection>;
+  logSpreadsheetSync(entry: {
+    connection_id: string | null;
+    direction: string;
+    operation: string;
+    row_key: string;
+    status: 'ok' | 'error' | 'conflict';
+    detail: string;
+    actor_id: string | null;
+  }): Promise<void>;
 
   listRounds(): Promise<Round[]>;
   getRound(id: string): Promise<Round | null>;

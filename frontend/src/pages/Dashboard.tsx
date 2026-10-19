@@ -66,10 +66,12 @@ export function Dashboard() {
           <div className="card">
             <h3>Manage</h3>
             <p><Link to="/admin/results">Results &amp; export</Link></p>
-            <p><Link to="/admin/candidates">Candidates &amp; CSV import</Link></p>
+            <p><Link to="/admin/candidates">Candidates, workbook &amp; CSV import</Link></p>
             <p><Link to="/admin/panels">Panels, codes &amp; judges</Link></p>
-            <p><Link to="/admin/judges">Accounts &amp; roles</Link></p>
+            <p><Link to="/admin/interviewers">Interviewer accounts (per vertical)</Link></p>
+            <p><Link to="/admin/verticals">Verticals &amp; worksheet mapping</Link></p>
             <p><Link to="/admin/rounds">Rounds &amp; criteria</Link></p>
+            <p><Link to="/admin/reports">Reports, exports &amp; spreadsheet sync</Link></p>
           </div>
         </div>
       ) : (

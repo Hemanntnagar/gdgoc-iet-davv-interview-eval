@@ -2,10 +2,13 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { Layout } from './components/Layout';
 import { useAuth } from './lib/auth';
 import { AdminCandidates } from './pages/AdminCandidates';
+import { AdminInterviewers } from './pages/AdminInterviewers';
 import { AdminJudges } from './pages/AdminJudges';
 import { AdminPanels } from './pages/AdminPanels';
+import { AdminReports } from './pages/AdminReports';
 import { AdminResults } from './pages/AdminResults';
 import { AdminRounds } from './pages/AdminRounds';
+import { AdminVerticals } from './pages/AdminVerticals';
 import { Candidates } from './pages/Candidates';
 import { Dashboard } from './pages/Dashboard';
 import { Evaluate } from './pages/Evaluate';
@@ -50,8 +53,11 @@ export default function App() {
         <Route path="/admin/candidates" element={<AdminCandidates />} />
         <Route path="/admin/panels" element={<AdminPanels />} />
         <Route path="/admin/judges" element={<AdminJudges />} />
+        <Route path="/admin/interviewers" element={<AdminInterviewers />} />
+        <Route path="/admin/verticals" element={<AdminVerticals />} />
         <Route path="/admin/rounds" element={<AdminRounds />} />
         <Route path="/admin/results" element={<AdminResults />} />
+        <Route path="/admin/reports" element={<AdminReports />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

@@ -17,6 +17,9 @@ export const candidateFiltersSchema = z.object({
   search: z.string().trim().max(200).optional(),
   branch: z.string().trim().max(120).optional(),
   panelId: uuidSchema.optional(),
+  verticalId: uuidSchema.optional(),
+  shift: z.string().trim().max(40).optional(),
+  priority: z.coerce.number().int().min(1).max(10).optional(),
   interviewStatus: z
     .enum(['pending', 'in_progress', 'completed', 'no_show'])
     .optional(),
@@ -24,12 +27,17 @@ export const candidateFiltersSchema = z.object({
     .enum(['pending', 'shortlisted', 'waitlisted', 'rejected'])
     .optional(),
   evaluationStatus: z.enum(['not_started', 'in_progress', 'complete']).optional(),
-  sort: z.enum(['name', 'branch', 'average', 'created']).optional(),
+  sort: z.enum(['name', 'branch', 'average', 'created', 'priority', 'roll']).optional(),
   order: z.enum(['asc', 'desc']).optional(),
   includeArchived: z
     .union([z.boolean(), z.enum(['true', 'false', '1', '0'])])
     .optional()
     .transform((v) => v === true || v === 'true' || v === '1'),
+});
+
+export const taskLinkSchema = z.object({
+  label: z.string().trim().max(120).default(''),
+  url: z.string().trim().max(2000),
 });
 
 export const candidateWriteSchema = z.object({
@@ -44,6 +52,18 @@ export const candidateWriteSchema = z.object({
     .enum(['pending', 'shortlisted', 'waitlisted', 'rejected'])
     .optional(),
   notes: z.string().max(5000).optional(),
+  // addendum: expanded applicant profile
+  vertical_id: uuidSchema.nullable().optional(),
+  shift: z.string().trim().max(40).optional(),
+  priority: z.number().int().min(1).max(10).nullable().optional(),
+  email: z.string().trim().email().max(200).nullable().optional().or(z.literal('').transform(() => null)),
+  roll_number: z.string().trim().max(80).nullable().optional(),
+  linkedin_url: z.string().trim().max(2000).nullable().optional(),
+  github_url: z.string().trim().max(2000).nullable().optional(),
+  team_message: z.string().max(5000).nullable().optional(),
+  remarks: z.string().max(5000).nullable().optional(),
+  task_links: z.array(taskLinkSchema).max(20).optional(),
+  external_profiles: z.array(taskLinkSchema).max(20).optional(),
 });
 
 export const candidatePatchSchema = candidateWriteSchema.partial();
@@ -55,6 +75,8 @@ export const evaluationSubmitSchema = z.object({
   feedback: z.string().max(5000).default(''),
   overall_score: z.number().nullable().optional(),
   scores: z.record(z.number()).default({}),
+  // addendum: per-criterion written feedback
+  criterion_feedbacks: z.record(z.string().max(2000)).default({}),
   client_created_at: z.string().datetime().nullable().optional(),
   // Sync hint: replace own existing official evaluation when the round allows edits
   replace_existing: z.boolean().optional(),
@@ -68,6 +90,7 @@ export const evaluationPatchSchema = z.object({
   feedback: z.string().max(5000).default(''),
   overall_score: z.number().nullable().optional(),
   scores: z.record(z.number()).default({}),
+  criterion_feedbacks: z.record(z.string().max(2000)).default({}),
 });
 
 export const panelCreateSchema = z.object({
@@ -86,6 +109,8 @@ export const roundCreateSchema = z.object({
   is_open: z.boolean().default(true),
   allow_edit_after_submit: z.boolean().default(false),
   closes_at: z.string().datetime().nullable().optional(),
+  // addendum: seed the five default 1–5 star criteria (default on)
+  seed_default_criteria: z.boolean().default(true),
 });
 
 export const roundPatchSchema = roundCreateSchema.partial();

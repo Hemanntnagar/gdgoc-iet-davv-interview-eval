@@ -50,6 +50,7 @@ export async function handleSubmission(
       scores = activeCriteria.map((c) => ({
         criterion_id: c.id,
         score: round2(Number(input.scores[c.id])),
+        feedback: input.criterion_feedbacks?.[c.id]?.trim() || undefined,
       }));
     } else {
       overallScore = validateOverallScore(input.overall_score);
@@ -62,10 +63,34 @@ export async function handleSubmission(
     throw e;
   }
 
-  return store.submitEvaluation(
+  const outcome = await store.submitEvaluation(
     judgeId,
     { ...input, overall_score: overallScore },
     { overall_score: overallScore, scores },
     opts,
   );
+
+  // Queue a sheet push when the vertical has a mapped worksheet (failures
+  // never block an offline submission — the queue drains with retries).
+  if (outcome.status === 'ok') {
+    try {
+      const verticalId = candidate.vertical_id ?? null;
+      if (verticalId) {
+        const vertical = await store.getVertical(verticalId);
+        if (vertical?.worksheet) {
+          await store.enqueueSpreadsheetSync({
+            direction: 'to_sheet',
+            entity_type: 'evaluation',
+            entity_id: candidate.id,
+            worksheet: vertical.worksheet,
+            row_key: candidate.roll_number || candidate.application_id || candidate.full_name,
+            payload: { evaluation_id: input.id, round_id: input.round_id, judge_id: judgeId },
+          });
+        }
+      }
+    } catch {
+      /* queueing is best-effort */
+    }
+  }
+  return outcome;
 }

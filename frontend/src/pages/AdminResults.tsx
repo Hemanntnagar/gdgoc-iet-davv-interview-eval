@@ -1,17 +1,20 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { api, downloadCsv } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import type { Panel, ResultRow } from '../lib/types';
+import type { Panel, ResultRow, Vertical } from '../lib/types';
 
-type SortKey = 'name' | 'branch' | 'average';
+type SortKey = 'name' | 'branch' | 'average' | 'priority' | 'roll';
 
 export function AdminResults() {
   const { getToken } = useAuth();
   const [rows, setRows] = useState<ResultRow[]>([]);
   const [panels, setPanels] = useState<Panel[]>([]);
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
   const [search, setSearch] = useState('');
   const [branch, setBranch] = useState('');
   const [panelId, setPanelId] = useState('');
+  const [verticalId, setVerticalId] = useState('');
+  const [shift, setShift] = useState('');
   const [evalStatus, setEvalStatus] = useState('');
   const [interviewStatus, setInterviewStatus] = useState('');
   const [sort, setSort] = useState<SortKey>('average');
@@ -24,12 +27,14 @@ export function AdminResults() {
     if (search) p.set('search', search);
     if (branch) p.set('branch', branch);
     if (panelId) p.set('panelId', panelId);
+    if (verticalId) p.set('verticalId', verticalId);
+    if (shift) p.set('shift', shift);
     if (evalStatus) p.set('evaluationStatus', evalStatus);
     if (interviewStatus) p.set('interviewStatus', interviewStatus);
     p.set('sort', sort);
     p.set('order', order);
     return p.toString();
-  }, [search, branch, panelId, evalStatus, interviewStatus, sort, order]);
+  }, [search, branch, panelId, verticalId, shift, evalStatus, interviewStatus, sort, order]);
 
   const load = useCallback(async () => {
     const token = await getToken();
@@ -39,6 +44,8 @@ export function AdminResults() {
       setRows(res.results);
       const p = await api<{ panels: Panel[] }>('/panels', { token });
       setPanels(p.panels);
+      const v = await api<{ verticals: Vertical[] }>('/verticals', { token });
+      setVerticals(v.verticals);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load results');
     }
@@ -95,6 +102,25 @@ export function AdminResults() {
             </select>
           </div>
           <div>
+            <label>Vertical</label>
+            <select value={verticalId} onChange={(e) => setVerticalId(e.target.value)}>
+              <option value="">All verticals</option>
+              {verticals.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label>Shift</label>
+            <select value={shift} onChange={(e) => setShift(e.target.value)}>
+              <option value="">Any</option>
+              <option value="Morning">Morning</option>
+              <option value="Evening">Evening</option>
+            </select>
+          </div>
+          <div>
             <label>Evaluation completion</label>
             <select value={evalStatus} onChange={(e) => setEvalStatus(e.target.value)}>
               <option value="">Any</option>
@@ -137,11 +163,13 @@ export function AdminResults() {
                 </button>
               </th>
               <th>Panel</th>
+              <th>Vertical / shift</th>
               <th>
                 <button onClick={() => toggleSort('average')}>
-                  Average{arrow('average')}
+                  Final avg{arrow('average')}
                 </button>
               </th>
+              <th>Individual scores</th>
               <th>Evaluations</th>
               <th>Status</th>
             </tr>
@@ -157,15 +185,33 @@ export function AdminResults() {
                     >
                       {expanded === r.candidate_id ? '▾' : '▸'} {r.full_name}
                     </button>
+                    {r.roll_number ? <span className="muted mono"> {r.roll_number}</span> : null}
+                    {r.priority ? <span className="badge blue">P{r.priority}</span> : null}
                   </td>
                   <td>{r.branch}</td>
                   <td>{r.panel_name}</td>
                   <td>
+                    {r.vertical_name ?? <span className="muted">—</span>}
+                    {r.shift ? <div className="muted" style={{ fontSize: '0.75rem' }}>{r.shift}</div> : null}
+                  </td>
+                  <td>
                     {r.average_score === null ? (
                       <span className="muted">—</span>
                     ) : (
-                      <strong>{r.average_score.toFixed(2)}</strong>
+                      <>
+                        <strong>{r.average_score.toFixed(2)}</strong>
+                        {r.is_provisional && r.evaluation_count > 0 && (
+                          <span className="badge warn" title="Panel evaluation not yet complete — provisional">
+                            provisional
+                          </span>
+                        )}
+                      </>
                     )}
+                  </td>
+                  <td className="mono" style={{ fontSize: '0.8rem' }}>
+                    {r.judge_ratings.length > 0
+                      ? r.judge_ratings.map((jr) => (jr.score === null ? '—' : Number(jr.score).toFixed(2))).join(' · ')
+                      : <span className="muted">—</span>}
                   </td>
                   <td>
                     {r.evaluation_count}/{r.expected_evaluations}{' '}
@@ -184,7 +230,7 @@ export function AdminResults() {
                 </tr>
                 {expanded === r.candidate_id && (
                   <tr>
-                    <td colSpan={6}>
+                    <td colSpan={8}>
                       {r.judge_ratings.length === 0 ? (
                         <span className="muted">No evaluations yet — not counted as zero.</span>
                       ) : (

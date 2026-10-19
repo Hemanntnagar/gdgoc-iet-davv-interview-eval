@@ -9,6 +9,8 @@ import type {
   CriterionScore,
   Evaluation,
   EvaluationWithScores,
+  ImportApplicantsResult,
+  ImportedApplicant,
   ImportResult,
   Panel,
   PanelCodeMeta,
@@ -16,9 +18,12 @@ import type {
   ResultRow,
   Round,
   Role,
+  SpreadsheetConnection,
+  SpreadsheetSyncItem,
   Store,
   SubmitEvaluationInput,
   SubmitOutcome,
+  Vertical,
   VerifyOutcome,
 } from './types.js';
 
@@ -37,6 +42,19 @@ export class MemoryStore implements Store {
   evaluations = new Map<string, Evaluation>();
   criterionScores = new Map<string, CriterionScore[]>();
   audits: AuditEntry[] = [];
+  verticals = new Map<string, Vertical>();
+  syncQueue = new Map<string, SpreadsheetSyncItem>();
+  syncLog: {
+    connection_id: string | null;
+    direction: string;
+    operation: string;
+    row_key: string;
+    status: 'ok' | 'error' | 'conflict';
+    detail: string;
+    actor_id: string | null;
+    created_at: string;
+  }[] = [];
+  spreadsheetConnection: SpreadsheetConnection | null = null;
 
   private now() {
     return new Date().toISOString();
@@ -237,12 +255,15 @@ export class MemoryStore implements Store {
       if (!scope.admin && !(scope.panelIds ?? []).includes(c.panel_id)) return false;
       if (!filters.includeArchived && c.archived_at) return false;
       if (filters.panelId && c.panel_id !== filters.panelId) return false;
+      if (filters.verticalId && c.vertical_id !== filters.verticalId) return false;
+      if (filters.shift !== undefined && filters.shift !== '' && (c.shift ?? '') !== filters.shift) return false;
+      if (filters.priority !== undefined && c.priority !== filters.priority) return false;
       if (filters.branch && !c.branch.toLowerCase().includes(filters.branch.toLowerCase())) return false;
       if (filters.interviewStatus && c.interview_status !== filters.interviewStatus) return false;
       if (filters.shortlistingStatus && c.shortlisting_status !== filters.shortlistingStatus) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
-        const hay = `${c.full_name} ${c.application_id ?? ''}`.toLowerCase();
+        const hay = `${c.full_name} ${c.application_id ?? ''} ${c.roll_number ?? ''}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -263,6 +284,12 @@ export class MemoryStore implements Store {
       switch (filters.sort) {
         case 'branch':
           cmp = a.branch.localeCompare(b.branch);
+          break;
+        case 'priority':
+          cmp = (a.priority ?? 999) - (b.priority ?? 999);
+          break;
+        case 'roll':
+          cmp = (a.roll_number ?? '').localeCompare(b.roll_number ?? '');
           break;
         case 'average': {
           const av = averages.get(a.id) ?? -1;
@@ -309,18 +336,7 @@ export class MemoryStore implements Store {
     this.candidates.set(c.id, c);
     return c;
   }
-  async updateCandidate(
-    id: string,
-    patch: Partial<{
-      full_name: string;
-      branch: string;
-      application_id: string | null;
-      panel_id: string;
-      interview_status: string;
-      shortlisting_status: string;
-      notes: string;
-    }>,
-  ): Promise<Candidate | null> {
+  async updateCandidate(id: string, patch: Partial<Omit<Candidate, 'id'>>): Promise<Candidate | null> {
     const c = this.candidates.get(id);
     if (!c) return null;
     Object.assign(c, patch, { updated_at: this.now() });
@@ -538,12 +554,15 @@ export class MemoryStore implements Store {
       if (!scope.admin && !(scope.panelIds ?? []).includes(c.panel_id)) return false;
       if (!filters.includeArchived && c.archived_at) return false;
       if (filters.panelId && c.panel_id !== filters.panelId) return false;
+      if (filters.verticalId && c.vertical_id !== filters.verticalId) return false;
+      if (filters.shift !== undefined && filters.shift !== '' && (c.shift ?? '') !== filters.shift) return false;
+      if (filters.priority !== undefined && c.priority !== filters.priority) return false;
       if (filters.branch && !c.branch.toLowerCase().includes(filters.branch.toLowerCase())) return false;
       if (filters.interviewStatus && c.interview_status !== filters.interviewStatus) return false;
       if (filters.shortlistingStatus && c.shortlisting_status !== filters.shortlistingStatus) return false;
       if (filters.search) {
         const q = filters.search.toLowerCase();
-        if (!`${c.full_name} ${c.application_id ?? ''}`.toLowerCase().includes(q)) return false;
+        if (!`${c.full_name} ${c.application_id ?? ''} ${c.roll_number ?? ''}`.toLowerCase().includes(q)) return false;
       }
       return true;
     });
@@ -556,19 +575,26 @@ export class MemoryStore implements Store {
       const scores = submitted.map((e) => e.overall_score).filter((s): s is number => s !== null);
       const count = submitted.length;
       const expected = panel?.expected_evaluations ?? 1;
+      const vertical = c.vertical_id ? this.verticals.get(c.vertical_id) : null;
       rows.push({
         candidate_id: c.id,
         full_name: c.full_name,
         branch: c.branch,
         application_id: c.application_id,
+        roll_number: c.roll_number ?? '',
         panel_id: c.panel_id,
         panel_name: panel?.name ?? '',
         expected_evaluations: expected,
+        vertical_id: c.vertical_id ?? null,
+        vertical_name: vertical?.name ?? null,
+        shift: c.shift ?? '',
+        priority: c.priority ?? null,
         interview_status: c.interview_status,
         shortlisting_status: c.shortlisting_status,
         evaluation_count: count,
         average_score: meanOrNull(scores),
         evaluation_status: count === 0 ? 'not_started' : count < expected ? 'in_progress' : 'complete',
+        is_provisional: count < expected,
         archived_at: c.archived_at,
         judge_ratings: submitted.map((e) => ({
           judge_id: e.judge_id,
@@ -587,6 +613,12 @@ export class MemoryStore implements Store {
         case 'branch':
           cmp = a.branch.localeCompare(b.branch);
           break;
+        case 'priority':
+          cmp = (a.priority ?? 999) - (b.priority ?? 999);
+          break;
+        case 'roll':
+          cmp = (a.roll_number ?? '').localeCompare(b.roll_number ?? '');
+          break;
         case 'average':
           cmp = (a.average_score ?? -1) - (b.average_score ?? -1);
           break;
@@ -600,6 +632,359 @@ export class MemoryStore implements Store {
       return cmp * order;
     });
     return rows;
+  }
+
+  // --- addendum: verticals ---
+  async listVerticals(onlyActive = false): Promise<Vertical[]> {
+    return [...this.verticals.values()]
+      .filter((v) => (onlyActive ? v.is_active : true))
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }
+  async getVertical(id: string): Promise<Vertical | null> {
+    return this.verticals.get(id) ?? null;
+  }
+  async createVertical(input: { key: string; name: string; worksheet?: string | null; sort_order?: number }): Promise<Vertical> {
+    if ([...this.verticals.values()].some((v) => v.key === input.key)) throw new Error('Vertical key already exists');
+    const v: Vertical = {
+      id: randomUUID(),
+      key: input.key,
+      name: input.name,
+      worksheet: input.worksheet ?? null,
+      is_active: true,
+      sort_order: input.sort_order ?? this.verticals.size + 1,
+    };
+    this.verticals.set(v.id, v);
+    return v;
+  }
+  async updateVertical(
+    id: string,
+    patch: Partial<{ name: string; worksheet: string | null; is_active: boolean; sort_order: number }>,
+  ): Promise<Vertical | null> {
+    const v = this.verticals.get(id);
+    if (!v) return null;
+    Object.assign(v, patch);
+    return v;
+  }
+
+  // --- addendum: interviewer provisioning ---
+  async provisionInterviewer(input: {
+    id: string;
+    login_id: string;
+    email: string;
+    display_name: string;
+    vertical_ids: string[];
+    panel_ids?: string[];
+    shift_restrictions?: string[];
+    created_by: string;
+  }): Promise<Profile> {
+    if ([...this.profiles.values()].some((p) => p.login_id === input.login_id)) {
+      throw new Error('login_id already exists');
+    }
+    const p: Profile = {
+      id: input.id,
+      email: input.email,
+      full_name: input.display_name,
+      role: 'judge',
+      is_active: true,
+      created_at: this.now(),
+      login_id: input.login_id,
+      display_name: input.display_name,
+      vertical_ids: input.vertical_ids,
+      panel_ids: input.panel_ids ?? [],
+      shift_restrictions: input.shift_restrictions ?? [],
+      password_reset_at: null,
+    };
+    this.profiles.set(p.id, p);
+    return p;
+  }
+  async updateInterviewer(
+    userId: string,
+    patch: Partial<{
+      display_name: string;
+      vertical_ids: string[];
+      panel_ids: string[];
+      shift_restrictions: string[];
+      is_active: boolean;
+    }>,
+  ): Promise<Profile | null> {
+    const p = this.profiles.get(userId);
+    if (!p) return null;
+    if (patch.display_name !== undefined) {
+      p.display_name = patch.display_name;
+      p.full_name = patch.display_name;
+    }
+    if (patch.vertical_ids) p.vertical_ids = patch.vertical_ids;
+    if (patch.panel_ids) p.panel_ids = patch.panel_ids;
+    if (patch.shift_restrictions) p.shift_restrictions = patch.shift_restrictions;
+    if (patch.is_active !== undefined) p.is_active = patch.is_active;
+    return p;
+  }
+  async recordPasswordReset(userId: string): Promise<void> {
+    const p = this.profiles.get(userId);
+    if (p) p.password_reset_at = this.now();
+  }
+  async getProfileByLoginId(loginId: string): Promise<Profile | null> {
+    for (const p of this.profiles.values()) {
+      if (p.login_id === loginId) return p;
+    }
+    return null;
+  }
+
+  // --- addendum: workbook import with stable identity ---
+  async importApplicants(rows: ImportedApplicant[], _actorId: string): Promise<ImportApplicantsResult> {
+    const result: ImportApplicantsResult = { created: 0, updated: 0, skipped_duplicates: 0, errors: [], conflicts: [] };
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const sheetKey = `${row.sourceSheet}::${row.sourceKey}`;
+      if (seen.has(sheetKey)) {
+        result.skipped_duplicates += 1;
+        continue;
+      }
+      seen.add(sheetKey);
+      if (!row.full_name) {
+        result.errors.push({ row: row.sourceRow, sheet: row.sourceSheet, reason: 'missing applicant name' });
+        continue;
+      }
+      // 1) exact (sheet, key) match
+      let existing =
+        [...this.candidates.values()].find(
+          (c) => c.source_sheet === row.sourceSheet && c.source_key === row.sourceKey,
+        ) ?? null;
+      // 2) roll number / application_id
+      if (!existing && row.roll_number) {
+        existing =
+          [...this.candidates.values()].find(
+            (c) => (c.roll_number || c.application_id || '').toUpperCase() === row.roll_number.toUpperCase(),
+          ) ?? null;
+      }
+      // 3) email
+      if (!existing && row.email) {
+        existing = [...this.candidates.values()].find((c) => c.email?.toLowerCase() === row.email.toLowerCase()) ?? null;
+      }
+
+      if (!existing) {
+        const panelId = this.resolvePanelForImport(row.panel, row.shift);
+        const c: Candidate = {
+          id: randomUUID(),
+          full_name: row.full_name,
+          branch: row.branch,
+          application_id: row.roll_number || null,
+          panel_id: panelId,
+          interview_status: 'pending',
+          shortlisting_status: 'pending',
+          notes: '',
+          archived_at: null,
+          created_at: this.now(),
+          updated_at: this.now(),
+          vertical_id: this.verticalIdForSheet(row.sourceSheet),
+          shift: row.shift,
+          priority: row.priority,
+          email: row.email,
+          roll_number: row.roll_number,
+          linkedin_url: row.linkedin_url,
+          github_url: row.github_url,
+          team_message: row.team_message,
+          remarks: row.remarks,
+          task_links: row.task_links,
+          external_profiles: row.external_profiles,
+          source_extra: row.source_extra,
+          source_key: row.sourceKey,
+          source_sheet: row.sourceSheet,
+          source_row: row.sourceRow,
+          last_synced_at: this.now(),
+        };
+        this.candidates.set(c.id, c);
+        result.created += 1;
+        continue;
+      }
+      // Update in place: only fill/overwrite from non-empty incoming values so
+      // existing information is never wiped by a sparse re-import.
+      const patchEmpty = (cur: string | null | undefined, incoming: string): string =>
+        incoming && incoming.trim() ? incoming : (cur ?? '');
+      const before = { ...existing };
+      existing.full_name = patchEmpty(existing.full_name, row.full_name);
+      existing.branch = patchEmpty(existing.branch, row.branch);
+      if (row.roll_number) {
+        existing.roll_number = row.roll_number;
+        existing.application_id = row.roll_number;
+      }
+      existing.email = patchEmpty(existing.email, row.email);
+      existing.shift = patchEmpty(existing.shift, row.shift);
+      if (row.priority !== null) existing.priority = row.priority;
+      existing.linkedin_url = patchEmpty(existing.linkedin_url, row.linkedin_url);
+      existing.github_url = patchEmpty(existing.github_url, row.github_url);
+      existing.team_message = patchEmpty(existing.team_message, row.team_message);
+      existing.remarks = patchEmpty(existing.remarks, row.remarks);
+      if (row.task_links.length) existing.task_links = row.task_links;
+      if (row.external_profiles.length) existing.external_profiles = row.external_profiles;
+      if (row.source_extra && Object.keys(row.source_extra).length) {
+        existing.source_extra = { ...(existing.source_extra ?? {}), ...row.source_extra };
+      }
+      existing.source_key = existing.source_key ?? row.sourceKey;
+      existing.source_sheet = existing.source_sheet ?? row.sourceSheet;
+      existing.source_row = row.sourceRow;
+      existing.updated_at = this.now();
+      existing.last_synced_at = this.now();
+      if (before.full_name !== existing.full_name) {
+        result.conflicts.push({
+          row: row.sourceRow,
+          sheet: row.sourceSheet,
+          field: 'full_name',
+          kept: existing.full_name,
+          incoming: row.full_name,
+        });
+      }
+      result.updated += 1;
+    }
+    return result;
+  }
+
+  private verticalIdForSheet(sheetName: string): string | null {
+    const norm = sheetName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    for (const v of this.verticals.values()) {
+      if (v.worksheet && v.worksheet.toLowerCase() === sheetName.toLowerCase()) return v.id;
+      if (v.key === norm || v.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') === norm) return v.id;
+    }
+    return null;
+  }
+
+  private resolvePanelForImport(panelName: string, shift: string): string {
+    const name = (panelName || '').trim();
+    if (name) {
+      const found = [...this.panels.values()].find((p) => p.name.toLowerCase() === name.toLowerCase());
+      if (found) return found.id;
+      const created: Panel = {
+        id: randomUUID(),
+        name,
+        is_active: true,
+        expected_evaluations: 1,
+        created_at: this.now(),
+        shift: shift || '',
+      };
+      this.panels.set(created.id, created);
+      return created.id;
+    }
+    const fallbackName = 'Imported';
+    const found = [...this.panels.values()].find((p) => p.name === fallbackName);
+    if (found) return found.id;
+    const created: Panel = {
+      id: randomUUID(),
+      name: fallbackName,
+      is_active: true,
+      expected_evaluations: 1,
+      created_at: this.now(),
+    };
+    this.panels.set(created.id, created);
+    return created.id;
+  }
+
+  // --- addendum: spreadsheet sync queue ---
+  async enqueueSpreadsheetSync(item: {
+    direction: 'to_sheet' | 'from_sheet';
+    entity_type: 'applicant' | 'evaluation';
+    entity_id: string;
+    worksheet: string;
+    row_key: string;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    for (const q of this.syncQueue.values()) {
+      if (q.direction === item.direction && q.entity_type === item.entity_type && q.entity_id === item.entity_id) {
+        // coalesce: latest payload wins, reset to pending
+        q.payload = item.payload;
+        q.worksheet = item.worksheet;
+        q.row_key = item.row_key;
+        q.status = 'pending';
+        q.updated_at = this.now();
+        return;
+      }
+    }
+    const row: SpreadsheetSyncItem = {
+      id: randomUUID(),
+      direction: item.direction,
+      entity_type: item.entity_type,
+      entity_id: item.entity_id,
+      worksheet: item.worksheet,
+      row_key: item.row_key,
+      payload: item.payload,
+      status: 'pending',
+      attempts: 0,
+      last_error: '',
+      conflict: null,
+      created_at: this.now(),
+      updated_at: this.now(),
+    };
+    this.syncQueue.set(row.id, row);
+  }
+  async claimSpreadsheetSync(limit: number): Promise<SpreadsheetSyncItem[]> {
+    const now = Date.now();
+    const claimed: SpreadsheetSyncItem[] = [];
+    for (const q of this.syncQueue.values()) {
+      if (claimed.length >= limit) break;
+      if (q.status === 'pending') {
+        q.status = 'in_flight';
+        q.attempts += 1;
+        q.updated_at = this.now();
+        claimed.push({ ...q });
+      } else if (q.status === 'in_flight' && new Date(q.updated_at).getTime() + 60_000 < now) {
+        // stale lease
+        q.attempts += 1;
+        q.updated_at = this.now();
+        claimed.push({ ...q });
+      }
+    }
+    return claimed;
+  }
+  async completeSpreadsheetSync(
+    id: string,
+    status: 'done' | 'failed' | 'conflict',
+    detail: { error?: string; conflict?: Record<string, unknown> },
+  ): Promise<void> {
+    const q = this.syncQueue.get(id);
+    if (!q) return;
+    q.status = status;
+    q.last_error = detail.error ?? '';
+    q.conflict = detail.conflict ?? null;
+    q.updated_at = this.now();
+    if (status === 'done') {
+      // keep the row for a short audit trail but mark it done; retries re-enqueue
+      q.payload = {};
+    }
+  }
+  async listSpreadsheetSync(status?: string): Promise<SpreadsheetSyncItem[]> {
+    return [...this.syncQueue.values()]
+      .filter((q) => (status ? q.status === status : true))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
+  }
+  async getSpreadsheetConnection(): Promise<SpreadsheetConnection | null> {
+    return this.spreadsheetConnection;
+  }
+  async saveSpreadsheetConnection(patch: Partial<SpreadsheetConnection>): Promise<SpreadsheetConnection> {
+    const cur = this.spreadsheetConnection;
+    const next: SpreadsheetConnection = {
+      id: cur?.id ?? randomUUID(),
+      kind: patch.kind ?? cur?.kind ?? 'google_sheets',
+      spreadsheet_id: patch.spreadsheet_id ?? cur?.spreadsheet_id ?? '',
+      title: patch.title ?? cur?.title ?? '',
+      header_row: patch.header_row ?? cur?.header_row ?? 1,
+      is_active: patch.is_active ?? cur?.is_active ?? true,
+      last_sync_at: patch.last_sync_at ?? cur?.last_sync_at ?? null,
+      last_sync_status: patch.last_sync_status ?? cur?.last_sync_status ?? 'never',
+      last_sync_error: patch.last_sync_error ?? cur?.last_sync_error ?? '',
+      sheet_revision: patch.sheet_revision ?? cur?.sheet_revision ?? '',
+    };
+    this.spreadsheetConnection = next;
+    return next;
+  }
+  async logSpreadsheetSync(entry: {
+    connection_id: string | null;
+    direction: string;
+    operation: string;
+    row_key: string;
+    status: 'ok' | 'error' | 'conflict';
+    detail: string;
+    actor_id: string | null;
+  }): Promise<void> {
+    this.syncLog.push({ ...entry, created_at: this.now() });
   }
 
   async audit(entry: AuditEntry): Promise<void> {

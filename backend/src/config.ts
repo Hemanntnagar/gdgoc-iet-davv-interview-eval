@@ -5,6 +5,12 @@ export interface AppConfig {
   corsOrigin: string | string[];
   verifyLockoutMinutes: number;
   port: number;
+  // addendum: workbook + spreadsheet sync + interviewer provisioning
+  loginEmailDomain: string;
+  googleSheetsCredentials: string | null;
+  defaultSpreadsheetId: string;
+  interviewersPerVertical: number;
+  goTrueAdminTimeoutMs: number;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -26,5 +32,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     corsOrigin: env.CORS_ORIGIN?.split(',').map((s) => s.trim()).filter(Boolean) ?? '*',
     verifyLockoutMinutes: Number(env.VERIFY_ATTEMPT_LOCKOUT_MINUTES ?? 10),
     port: Number(env.PORT ?? 4000),
+    loginEmailDomain: env.LOGIN_EMAIL_DOMAIN ?? 'gdgoc.iet-davv.club',
+    googleSheetsCredentials: env.GOOGLE_SHEETS_CREDENTIALS?.trim() || null,
+    defaultSpreadsheetId: env.SPREADSHEET_ID ?? '',
+    interviewersPerVertical: Number(env.INTERVIEWERS_PER_VERTICAL ?? 10),
+    goTrueAdminTimeoutMs: Number(env.GOTRUE_ADMIN_TIMEOUT_MS ?? 10_000),
   };
 }

@@ -1,5 +1,7 @@
 import { API_URL } from './config';
 
+export { API_URL };
+
 export class ApiError extends Error {
   status: number;
   code: string;

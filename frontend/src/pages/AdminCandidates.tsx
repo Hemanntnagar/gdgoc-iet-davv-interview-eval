@@ -1,8 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, downloadCsv, ApiError } from '../lib/api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, downloadCsv, ApiError, API_URL } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { ConfirmDialog } from '../components/Ui';
 import type { Candidate, Panel } from '../lib/types';
+
+interface ImportSheetAudit {
+  sheet: string;
+  rows: number;
+  applicantRows: number;
+  usedAsSource: boolean;
+  headers: string[];
+  reason?: string;
+}
 
 export function AdminCandidates() {
   const { getToken } = useAuth();
@@ -18,6 +27,16 @@ export function AdminCandidates() {
   const [confirmArchive, setConfirmArchive] = useState<Candidate | null>(null);
   const [csvText, setCsvText] = useState('');
   const [importResult, setImportResult] = useState<unknown>(null);
+  const [workbookFile, setWorkbookFile] = useState<File | null>(null);
+  const [workbookPreview, setWorkbookPreview] = useState<{
+    sheets: ImportSheetAudit[];
+    applicant_count: number;
+    errors: { sheet: string; row: number; reason: string }[];
+    intra_file_duplicates: number;
+  } | null>(null);
+  const [workbookResult, setWorkbookResult] = useState<unknown>(null);
+  const [workbookBusy, setWorkbookBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     const token = await getToken();
@@ -95,6 +114,42 @@ export function AdminCandidates() {
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Import failed');
+    }
+  };
+
+  // --- workbook import (per-vertical worksheets) ---
+  const uploadWorkbook = async (dryRun: boolean) => {
+    if (!workbookFile) return;
+    setWorkbookBusy(true);
+    setError(null);
+    setWorkbookResult(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const body = new FormData();
+      body.append('file', workbookFile);
+      const res = await fetch(
+        `${API_URL}/api/admin/applicants/import${dryRun ? '?dry_run=true' : ''}`,
+        { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new ApiError(res.status, data?.error?.code ?? 'error', data?.error?.message ?? 'Import failed');
+      if (dryRun) {
+        setWorkbookPreview(data);
+      } else {
+        setWorkbookResult(data);
+        setWorkbookPreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        setWorkbookFile(null);
+        setNotice(
+          `Workbook imported: ${data.created} created, ${data.updated} updated, ${data.skipped_duplicates} duplicates skipped.`,
+        );
+        await load();
+      }
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : e instanceof Error ? e.message : 'Workbook import failed');
+    } finally {
+      setWorkbookBusy(false);
     }
   };
 
@@ -271,6 +326,99 @@ export function AdminCandidates() {
           </tbody>
         </table>
         {candidates.length === 0 && <div className="empty">No candidates found.</div>}
+      </div>
+
+      <div className="card mt">
+        <h3>Workbook import (.xlsx / .xls / .csv)</h3>
+        <p className="muted">
+          Every worksheet is inspected — applicant sheets are detected by their header row (name /
+          roll / email columns), other sheets are reported with a reason instead of being silently
+          skipped. Re-imports upsert by roll number / email, so existing evaluations are kept.
+        </p>
+        <div className="filters">
+          <div style={{ flex: 1 }}>
+            <label>Workbook file</label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              onChange={(e) => {
+                setWorkbookFile(e.target.files?.[0] ?? null);
+                setWorkbookPreview(null);
+                setWorkbookResult(null);
+              }}
+            />
+          </div>
+          <button
+            className="btn secondary"
+            disabled={!workbookFile || workbookBusy}
+            onClick={() => void uploadWorkbook(true)}
+          >
+            Preview
+          </button>
+          <button
+            className="btn"
+            disabled={!workbookFile || workbookBusy}
+            onClick={() => void uploadWorkbook(false)}
+          >
+            {workbookBusy ? 'Working…' : 'Import'}
+          </button>
+        </div>
+
+        {workbookPreview && (
+          <div className="mt">
+            <h4>
+              Preview — {workbookPreview.applicant_count} applicant row
+              {workbookPreview.applicant_count === 1 ? '' : 's'}
+              {workbookPreview.intra_file_duplicates > 0 &&
+                ` (${workbookPreview.intra_file_duplicates} duplicate rows inside the file)`}
+            </h4>
+            <table className="data">
+              <thead>
+                <tr>
+                  <th>Sheet</th>
+                  <th>Rows</th>
+                  <th>Applicant rows</th>
+                  <th>Used</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {workbookPreview.sheets.map((s) => (
+                  <tr key={s.sheet}>
+                    <td>{s.sheet}</td>
+                    <td>{s.rows}</td>
+                    <td>{s.applicantRows}</td>
+                    <td>
+                      <span className={`badge ${s.usedAsSource ? 'ok' : 'neutral'}`}>
+                        {s.usedAsSource ? 'source' : 'skipped'}
+                      </span>
+                    </td>
+                    <td className="muted">{s.reason ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {workbookPreview.errors.length > 0 && (
+              <details className="mt">
+                <summary>{workbookPreview.errors.length} row error(s)</summary>
+                <ul>
+                  {workbookPreview.errors.map((e, i) => (
+                    <li key={i}>
+                      {e.sheet} row {e.row}: {e.reason}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+
+        {workbookResult ? (
+          <pre className="mono mt" style={{ whiteSpace: 'pre-wrap', fontSize: '0.82rem' }}>
+            {JSON.stringify(workbookResult, null, 2)}
+          </pre>
+        ) : null}
       </div>
 
       <div className="card mt">

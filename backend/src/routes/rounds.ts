@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { badRequest, HttpError } from '../lib/errors.js';
 import { requireAuth, type AuthedRequest } from '../lib/auth.js';
 import { criterionSchema, roundCreateSchema, roundPatchSchema, criterionPatchSchema } from '../lib/validate.js';
+import { DEFAULT_CRITERIA, STAR_MAX, STAR_MIN } from '../lib/rubric.js';
 import type { Store } from '../store/types.js';
 
 function isAdmin(req: AuthedRequest) {
@@ -35,6 +36,22 @@ export function roundRoutes(store: Store): Router {
       const parsed = roundCreateSchema.safeParse(req.body);
       if (!parsed.success) throw badRequest('Invalid request', parsed.error.flatten());
       const round = await store.createRound({ ...parsed.data, closes_at: parsed.data.closes_at ?? null });
+      // Seed the five default 1–5 star criteria; admins may edit/remove them.
+      if (parsed.data.seed_default_criteria !== false) {
+        for (let i = 0; i < DEFAULT_CRITERIA.length; i++) {
+          const c = DEFAULT_CRITERIA[i];
+          await store.createCriterion({
+            round_id: round.id,
+            name: c.name,
+            description: c.description,
+            min_score: STAR_MIN,
+            max_score: STAR_MAX,
+            weight: 1,
+            sort_order: i + 1,
+            is_active: true,
+          });
+        }
+      }
       await store.audit({
         actor_id: req.user!.id,
         action: 'round_created',

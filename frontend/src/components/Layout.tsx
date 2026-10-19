@@ -67,7 +67,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <NavLink to="/admin/candidates">Candidates</NavLink>
               <NavLink to="/admin/panels">Panels</NavLink>
               <NavLink to="/admin/judges">Judges</NavLink>
+              <NavLink to="/admin/interviewers">Interviewers</NavLink>
+              <NavLink to="/admin/verticals">Verticals</NavLink>
               <NavLink to="/admin/rounds">Rounds</NavLink>
+              <NavLink to="/admin/reports">Reports</NavLink>
             </>
           )}
           <NavLink to="/sync">Sync</NavLink>

@@ -204,6 +204,27 @@ table.data th button {
 .score-row:last-child { border-bottom: 0; }
 .score-row input[type='number'] { max-width: 110px; }
 
+/* addendum: 1-5 star rubric */
+.star-rating { display: inline-flex; gap: 0.15rem; }
+.star-rating .star {
+  background: none; border: none; cursor: pointer; padding: 0 0.1rem;
+  font-size: 1.5rem; line-height: 1; color: #cbd5e1;
+  transition: color 0.12s, transform 0.12s;
+}
+.star-rating .star:hover { transform: scale(1.15); }
+.star-rating .star.on { color: #f5b301; }
+.star-rating .star:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; border-radius: 4px; }
+.star-caption { font-size: 0.8rem; color: var(--muted); margin-top: 0.15rem; }
+
+/* addendum: expanded candidate profile */
+.profile-card .profile-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.6rem 1.2rem; margin: 0.7rem 0;
+}
+.profile-card .profile-grid .muted { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.profile-card .profile-grid div span { display: block; font-weight: 600; }
+.profile-wide { grid-column: 1 / -1; }
+
 .outbox-item { border: 1px solid var(--border); border-radius: 8px; padding: 0.7rem; margin-bottom: 0.6rem; }
 .outbox-item .head { display: flex; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 
