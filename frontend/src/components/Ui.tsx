@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useTheme } from '../lib/theme';
+import { ThemeToggle } from './ThemeToggle';
 
 export function ConfirmDialog({
   open,
@@ -77,11 +79,21 @@ export function AuthShell({
   children: ReactNode;
   compact?: boolean;
 }) {
+  const { theme } = useTheme();
   return (
     <div className={compact ? 'auth-inline' : 'auth-shell'}>
+      {!compact && (
+        <div className="auth-theme">
+          <ThemeToggle />
+        </div>
+      )}
       <div className="auth-card">
         <div className="auth-brand">
-          <img className="auth-logo" src="/gdg-logo.png" alt="Google Developer Group IET DAVV" />
+          <img
+            className="auth-logo"
+            src={theme === 'dark' ? '/gdg-logo-dark.png' : '/gdg-logo.png'}
+            alt="Google Developer Group IET DAVV"
+          />
         </div>
         <h1>{title}</h1>
         {subtitle && <p className="muted">{subtitle}</p>}

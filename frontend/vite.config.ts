@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg', 'gdg-logo.png', 'gdg-mark.png'],
+      includeAssets: ['favicon.svg', 'icons.svg', 'gdg-logo.png', 'gdg-logo-dark.png', 'gdg-mark.png'],
       manifest: {
         name: 'GDGOC IET DAVV Interviews',
         short_name: 'GDGOC Interviews',

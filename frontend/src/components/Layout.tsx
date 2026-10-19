@@ -2,6 +2,8 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useOnline } from '../lib/net';
 import { useSync } from '../lib/syncContext';
+import { useTheme } from '../lib/theme';
+import { ThemeToggle } from './ThemeToggle';
 
 export function NetSyncIndicators() {
   const online = useOnline();
@@ -30,6 +32,7 @@ export function NetSyncIndicators() {
 export function Layout({ children }: { children: React.ReactNode }) {
   const { profile, signOut, status } = useAuth();
   const { pending, conflicts } = useSync();
+  const { theme } = useTheme();
   const navigate = useNavigate();
   const isAdmin = profile?.role === 'admin';
 
@@ -50,7 +53,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="layout">
       <header className="topbar">
         <span className="brand">
-          <img className="brand-logo" src="/gdg-logo.png" alt="Google Developer Group IET DAVV" />
+          <img
+            className="brand-logo"
+            src={theme === 'dark' ? '/gdg-logo-dark.png' : '/gdg-logo.png'}
+            alt="Google Developer Group IET DAVV"
+          />
+          <img className="brand-mark-img" src="/gdg-mark.png" alt="Google Developer Group IET DAVV" />
         </span>
         <nav>
           <NavLink to="/" end>
@@ -77,13 +85,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <NavLink to="/sync">Sync</NavLink>
         </nav>
         <NetSyncIndicators />
+        <ThemeToggle />
         <span className="user-chip">
           {profile?.full_name ? (
             <span className="avatar" aria-hidden="true">
               {profile.full_name.trim().charAt(0).toUpperCase()}
             </span>
           ) : null}
-          {profile?.full_name}
+          <span className="user-name">{profile?.full_name}</span>
           {status === 'offline' ? ' (offline session)' : ''}
         </span>
         <button className="btn secondary small" onClick={handleLogout}>

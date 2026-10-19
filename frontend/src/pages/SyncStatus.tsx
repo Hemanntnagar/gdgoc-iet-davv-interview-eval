@@ -156,7 +156,7 @@ function ConflictCard({ item, onChanged }: { item: OutboxItem; onChanged: () => 
   const { engine } = useSync();
   const [confirm, setConfirm] = useState(false);
   return (
-    <div className="card tight outbox-item" style={{ borderColor: '#f6aea8' }}>
+    <div className="card tight outbox-item conflict">
       <div className="head">
         <strong>{item.candidate_name || item.candidate_id}</strong>
         <span className="badge err">Conflict</span>
