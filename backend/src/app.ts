@@ -89,6 +89,13 @@ export function createApp(deps: AppDeps): express.Express {
       });
       return;
     }
+    // Body-parser and similar middleware throw errors carrying an HTTP status.
+    const status = (err as { status?: number; statusCode?: number } | null)?.status
+      ?? (err as { statusCode?: number } | null)?.statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      res.status(status).json({ error: { code: 'bad_request', message: 'Malformed request' } });
+      return;
+    }
     console.error(err);
     res.status(500).json({ error: { code: 'internal', message: 'Internal server error' } });
   });
