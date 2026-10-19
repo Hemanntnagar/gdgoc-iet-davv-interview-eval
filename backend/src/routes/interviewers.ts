@@ -256,6 +256,8 @@ export function interviewerRoutes(store: Store, config: AppConfig): Router {
           });
           credentials.push({ login_id: normalizeLoginId(uniqueLogin), email, password });
           created.push({ id: userId, login_id: normalizeLoginId(uniqueLogin), email });
+          // Pace creations to stay under Supabase Auth's email rate limit.
+          await new Promise((r) => setTimeout(r, 1_200));
         } catch (e) {
           errors.push({ index: i, reason: String((e as Error).message ?? e) });
         }
