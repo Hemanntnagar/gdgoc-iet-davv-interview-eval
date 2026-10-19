@@ -1,6 +1,6 @@
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { api } from './api';
+import { api, ApiError } from './api';
 import { OFFLINE_SESSION_HOURS, SUPABASE_ANON_KEY, SUPABASE_URL } from './config';
 import {
   getOfflineSession,
@@ -24,12 +24,7 @@ interface AuthState {
   panels: Panel[];
   offlineSession: OfflineSession | null;
   signIn: (email: string, password: string) => Promise<void>;
-  register: (
-    fullName: string,
-    email: string,
-    password: string,
-    adminCode?: string,
-  ) => Promise<string | null>;
+  register: (fullName: string, email: string, password: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
   getToken: () => Promise<string | null>;
   refreshMe: () => Promise<void>;
@@ -37,11 +32,19 @@ interface AuthState {
   isOfflineSession: boolean;
 }
 
-const PENDING_ADMIN_CODE_KEY = 'gdgoc-pending-admin-code';
+const PENDING_CODE_KEY = 'gdgoc-pending-code';
 
-/** Promotes the signed-in account to admin using the secret code. */
-async function claimAdmin(token: string, code: string): Promise<void> {
-  await api('/admin/claim', { token, method: 'POST', body: JSON.stringify({ code }) });
+/**
+ * Completes registration server-side: a valid panel code makes the account a
+ * judge of that panel, the admin invite code makes it an admin, and anything
+ * else destroys the account. Called with the fresh sign-up session.
+ */
+async function completeRegistration(token: string, code: string): Promise<{ role: 'judge' | 'admin' }> {
+  return api('/auth/complete-registration', {
+    token,
+    method: 'POST',
+    body: JSON.stringify({ code }),
+  });
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -134,27 +137,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data } = await supabase().auth.getSession();
       setSession(data.session);
       if (!data.session) throw new Error('Sign-in did not produce a session');
+      // A code entered at registration (before email confirmation, when
+      // sessions weren't issued) is completed here, once sign-in works.
+      const pending = localStorage.getItem(PENDING_CODE_KEY);
+      if (pending) {
+        localStorage.removeItem(PENDING_CODE_KEY);
+        try {
+          await completeRegistration(data.session.access_token, pending);
+        } catch {
+          /* invalid code — backend already removed the account */
+        }
+        try {
+          await loadMe(data.session.access_token);
+          setStatus('online');
+          setOfflineSession(await getOfflineSession());
+        } catch {
+          await supabase().auth.signOut({ scope: 'local' });
+          throw new Error('Registration was not completed. Please register again with a valid code.');
+        }
+        return;
+      }
       await loadMe(data.session.access_token);
       setOfflineSession(await getOfflineSession());
       setStatus('online');
-      // A secret admin code entered during registration (before email
-      // confirmation) is retried here, once the account can authenticate.
-      const pending = localStorage.getItem(PENDING_ADMIN_CODE_KEY);
-      if (pending) {
-        localStorage.removeItem(PENDING_ADMIN_CODE_KEY);
-        try {
-          await claimAdmin(data.session.access_token, pending);
-          await loadMe(data.session.access_token);
-        } catch {
-          /* wrong code — the account stays a judge */
-        }
-      }
     },
     [loadMe],
   );
 
   const register = useCallback(
-    async (fullName: string, email: string, password: string, adminCode?: string) => {
+    async (fullName: string, email: string, password: string, code: string) => {
       const { data, error } = await supabase().auth.signUp({
         email,
         password,
@@ -162,15 +173,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       if (error) throw new Error(error.message);
       if (data.user && !data.session) {
-        if (adminCode) localStorage.setItem(PENDING_ADMIN_CODE_KEY, adminCode);
-        return 'Account created. Check your email to confirm, then sign in.';
+        // Email confirmation still enabled on this project: finish after
+        // the user confirms and signs in.
+        localStorage.setItem(PENDING_CODE_KEY, code);
+        return;
       }
-      if (adminCode && data.session) {
-        // A wrong code is silently ignored — never reveal that the field
-        // exists or that it grants anything.
-        await claimAdmin(data.session.access_token, adminCode).catch(() => {});
+      if (!data.session) throw new Error('Registration did not produce a session');
+      try {
+        await completeRegistration(data.session.access_token, code);
+      } catch (e) {
+        // Invalid code — the backend destroyed the account. Sign out locally
+        // and surface the reason.
+        await supabase().auth.signOut({ scope: 'local' });
+        if (e instanceof ApiError && e.status === 429) throw new Error(e.message);
+        throw new Error('Invalid code. Your account was not created.');
       }
-      return null;
     },
     [],
   );

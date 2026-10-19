@@ -8,9 +8,8 @@ export function Register() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [adminCode, setAdminCode] = useState('');
+  const [panelCode, setPanelCode] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
@@ -18,17 +17,8 @@ export function Register() {
     setBusy(true);
     setError(null);
     try {
-      const message = await register(
-        fullName.trim(),
-        email.trim(),
-        password,
-        adminCode.trim() || undefined,
-      );
-      if (message) {
-        setNotice(message);
-      } else {
-        navigate('/');
-      }
+      await register(fullName.trim(), email.trim(), password, panelCode.trim());
+      navigate('/');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
     } finally {
@@ -41,7 +31,6 @@ export function Register() {
       <div className="card">
         <h1>Judge registration</h1>
         {error && <div className="alert error">{error}</div>}
-        {notice && <div className="alert success">{notice}</div>}
         <form onSubmit={submit}>
           <label className="field">
             <span>Full name</span>
@@ -69,17 +58,20 @@ export function Register() {
             />
           </label>
           <label className="field">
-            <span>Invite code (optional)</span>
+            <span>Panel code</span>
             <input
-              type="password"
-              value={adminCode}
-              onChange={(e) => setAdminCode(e.target.value)}
-              placeholder="Leave blank if none"
+              value={panelCode}
+              onChange={(e) => setPanelCode(e.target.value.toUpperCase())}
+              required
+              minLength={4}
+              maxLength={20}
               autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
             />
           </label>
           <button className="btn" disabled={busy} style={{ width: '100%' }}>
-            {busy ? 'Creating…' : 'Create judge account'}
+            {busy ? 'Creating…' : 'Create account'}
           </button>
         </form>
         <p className="mt muted">

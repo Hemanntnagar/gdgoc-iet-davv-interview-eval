@@ -88,6 +88,10 @@ export class MemoryStore implements Store {
     p.is_active = isActive;
     return p;
   }
+  async deleteProfile(userId: string): Promise<void> {
+    this.profiles.delete(userId);
+    this.panelMembers = this.panelMembers.filter((m) => m.judge_id !== userId);
+  }
 
   async listPanels(): Promise<Panel[]> {
     return [...this.panels.values()].sort((a, b) => a.name.localeCompare(b.name));

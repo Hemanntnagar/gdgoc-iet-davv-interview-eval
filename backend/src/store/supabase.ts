@@ -90,6 +90,13 @@ export class SupabaseStore implements Store {
     if (error) throw new Error(`setProfileActive: ${error.message}`);
     return data as Profile | null;
   }
+  async deleteProfile(userId: string): Promise<void> {
+    // audit_events.actor_id has no ON DELETE CASCADE — clear it first.
+    const { error: auditErr } = await this.sb.from('audit_events').delete().eq('actor_id', userId);
+    if (auditErr) throw new Error(`deleteProfile(audit): ${auditErr.message}`);
+    const { error } = await this.sb.from('profiles').delete().eq('id', userId);
+    if (error) throw new Error(`deleteProfile: ${error.message}`);
+  }
 
   // ---- panels ------------------------------------------------------------
   async listPanels(): Promise<Panel[]> {

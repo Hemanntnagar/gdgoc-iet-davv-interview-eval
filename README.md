@@ -48,13 +48,20 @@ npm install
 npm run dev                 # http://localhost:5173 (proxies /api to backend)
 ```
 
-### 4. First admin
+### 4. Registration & first admin
 
-Registration always creates **judge** accounts. Set an admin secret code in the
-backend environment (`ADMIN_SECRET_CODE`), then enter it in the "Admin secret
-code" field on the registration form — the account becomes an admin
-immediately (rate-limited, compared in constant time, code never returned by
-any endpoint).
+Registration requires a **panel code** — only invited people can create
+accounts. The code field accepts either:
+
+- a **panel code** (Admin → Panels → "New code"): the account becomes a judge
+  of that panel; or
+- the **admin invite code** (`ADMIN_SECRET_CODE` env): the account becomes an
+  admin.
+
+A wrong code destroys the just-created account, so nobody can squat emails.
+Panel codes are permanent (reusable like passwords) and can be rotated later
+from Admin → Panels → "Rotate". The invite-code field looks identical to the
+panel-code field on the form; wrong admin codes are silently ignored.
 
 Alternatively, promote an existing account from the admin UI
 (Admin → Judges → change role) or via SQL:
@@ -62,9 +69,6 @@ Alternatively, promote an existing account from the admin UI
 ```sql
 update public.profiles set role = 'admin' where id = '<auth-user-uuid>';
 ```
-
-Judges join their panel by entering a private panel code at `/verify`
-(Admin → Panels → create/rotate code).
 
 ## Deployment
 

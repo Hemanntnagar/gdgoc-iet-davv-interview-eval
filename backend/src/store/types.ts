@@ -302,6 +302,8 @@ export interface Store {
   createProfile(input: { id: string; email: string; full_name: string; role: Role }): Promise<Profile>;
   setProfileRole(userId: string, role: Role): Promise<Profile | null>;
   setProfileActive(userId: string, isActive: boolean): Promise<Profile | null>;
+  /** Removes a profile and everything that cascades from it (failed registrations). */
+  deleteProfile(userId: string): Promise<void>;
 
   // --- addendum: verticals ---
   listVerticals(onlyActive?: boolean): Promise<Vertical[]>;

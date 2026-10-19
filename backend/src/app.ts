@@ -18,6 +18,7 @@ import { verticalRoutes } from './routes/verticals.js';
 import { applicantImportRoutes } from './routes/admin-applicants.js';
 import { sheetSyncRoutes } from './routes/sheets.js';
 import { reportRoutes } from './routes/reports.js';
+import { registrationRoutes } from './routes/registration.js';
 import type { Store } from './store/types.js';
 
 export interface AppDeps {
@@ -65,8 +66,9 @@ export function createApp(deps: AppDeps): express.Express {
   app.use('/api', auth, syncRoutes(deps.store));
   app.use('/api', auth, resultRoutes(deps.store));
   app.use('/api', auth, adminRoutes(deps.store, deps.config));
+  app.use('/api', auth, registrationRoutes(deps.store, deps.config));
   app.use('/api', auth, verticalRoutes(deps.store));
-app.use('/api', auth, applicantImportRoutes(deps.store));
+  app.use('/api', auth, applicantImportRoutes(deps.store));
   app.use('/api', auth, sheetSyncRoutes(deps.store, deps.config));
   app.use('/api', auth, reportRoutes(deps.store));
 

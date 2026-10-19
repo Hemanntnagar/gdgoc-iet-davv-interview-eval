@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config.js';
+import { hashPanelCode } from '../src/lib/hash.js';
 import { DEFAULT_CRITERIA, STAR_MAX, STAR_MIN } from '../src/lib/rubric.js';
 import { parseWorkbook } from '../src/services/importer/parse.js';
 import { MemoryStore } from '../src/store/memory.js';
@@ -352,6 +353,64 @@ describe('admin secret code claim', () => {
     const anon = await request(app).post('/api/admin/claim').send({ code: 'super-secret-admin' });
     expect(anon.status).toBe(401);
     expect((await store.getProfile(judge.id))!.role).toBe('judge');
+  });
+});
+
+describe('registration completion (panel code gate)', () => {
+  async function seedPanel(store: MemoryStore, code: string) {
+    const panel = await store.createPanel({ name: `Panel ${code}`, expected_evaluations: 1 });
+    await store.createPanelCode({
+      panel_id: panel.id,
+      code_hash: hashPanelCode(code, 'test-pepper'),
+      label: 'permanent',
+      preview: `${code.slice(0, 2)}${code.slice(-2)}`,
+    });
+    return panel;
+  }
+
+  it('valid panel code joins the judge to that panel', async () => {
+    const { app, store } = makeApp();
+    const panel = await seedPanel(store, 'PANECODE');
+    const judge = await store.createProfile({ id: randomUUID(), email: 'j@test', full_name: 'J', role: 'judge' });
+
+    const res = await request(app)
+      .post('/api/auth/complete-registration')
+      .set(auth(judge.id))
+      .send({ code: 'panecode' }); // lowercase — server normalizes
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe('judge');
+    expect(res.body.panel.id).toBe(panel.id);
+    const mine = await store.listMyPanels(judge.id);
+    expect(mine.map((p) => p.id)).toContain(panel.id);
+    expect((await store.getProfile(judge.id))!.role).toBe('judge');
+  });
+
+  it('admin invite code promotes the account', async () => {
+    const { app, store } = makeApp();
+    const user = await store.createProfile({ id: randomUUID(), email: 'a@test', full_name: 'A', role: 'judge' });
+    const res = await request(app)
+      .post('/api/auth/complete-registration')
+      .set(auth(user.id))
+      .send({ code: 'super-secret-admin' });
+    expect(res.status).toBe(200);
+    expect(res.body.role).toBe('admin');
+    expect((await store.getProfile(user.id))!.role).toBe('admin');
+  });
+
+  it('invalid code destroys the account', async () => {
+    const { app, store } = makeApp();
+    await seedPanel(store, 'PANECODE');
+    const judge = await store.createProfile({ id: randomUUID(), email: 'x@test', full_name: 'X', role: 'judge' });
+
+    const res = await request(app)
+      .post('/api/auth/complete-registration')
+      .set(auth(judge.id))
+      .send({ code: 'NOTREAL1' });
+    expect(res.status).toBe(401);
+    expect(await store.getProfile(judge.id)).toBeNull();
+
+    const anon = await request(app).post('/api/auth/complete-registration').send({ code: 'PANECODE' });
+    expect(anon.status).toBe(401);
   });
 });
 
