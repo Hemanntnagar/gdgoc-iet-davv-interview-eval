@@ -35,9 +35,13 @@ export function roundRoutes(store: Store): Router {
       isAdmin(req);
       const parsed = roundCreateSchema.safeParse(req.body);
       if (!parsed.success) throw badRequest('Invalid request', parsed.error.flatten());
-      const round = await store.createRound({ ...parsed.data, closes_at: parsed.data.closes_at ?? null });
+      const { seed_default_criteria, ...roundInput } = parsed.data;
+      const round = await store.createRound({
+        ...roundInput,
+        closes_at: roundInput.closes_at ?? null,
+      });
       // Seed the five default 1–5 star criteria; admins may edit/remove them.
-      if (parsed.data.seed_default_criteria !== false) {
+      if (seed_default_criteria !== false) {
         for (let i = 0; i < DEFAULT_CRITERIA.length; i++) {
           const c = DEFAULT_CRITERIA[i];
           await store.createCriterion({

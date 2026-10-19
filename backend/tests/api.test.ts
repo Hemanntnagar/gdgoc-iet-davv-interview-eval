@@ -660,3 +660,39 @@ describe('exports', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('round creation', () => {
+  let app: ReturnType<typeof makeApp>['app'];
+  let store: MemoryStore;
+  let s: Seed;
+  beforeEach(async () => {
+    ({ app, store } = makeApp());
+    s = await seed(store);
+  });
+
+  it('does not leak request-only fields (seed_default_criteria) into the store', async () => {
+    const captured: unknown[] = [];
+    const real = store.createRound.bind(store);
+    store.createRound = (input: Parameters<MemoryStore['createRound']>[0]) => {
+      captured.push(input);
+      return real(input);
+    };
+
+    const res = await request(app).post('/api/rounds').set(auth(s.adminId)).send({ name: 'New Round' });
+    expect(res.status).toBe(201);
+    expect(captured).toHaveLength(1);
+    expect(captured[0]).not.toHaveProperty('seed_default_criteria');
+  });
+
+  it('seeds the default criteria for a new round', async () => {
+    const res = await request(app).post('/api/rounds').set(auth(s.adminId)).send({ name: 'Seeded Round' });
+    expect(res.status).toBe(201);
+    const criteria = await store.listCriteria(res.body.round.id);
+    expect(criteria.length).toBeGreaterThan(0);
+  });
+
+  it('rejects round creation by a judge', async () => {
+    const res = await request(app).post('/api/rounds').set(auth(s.judge1Id)).send({ name: 'Nope' });
+    expect(res.status).toBe(403);
+  });
+});
