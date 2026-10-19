@@ -49,7 +49,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="layout">
       <header className="topbar">
-        <span className="brand">GDGOC IET DAVV</span>
+        <span className="brand">
+          <img className="brand-logo" src="/gdg-logo.png" alt="Google Developer Group IET DAVV" />
+        </span>
         <nav>
           <NavLink to="/" end>
             Home
@@ -75,7 +77,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <NavLink to="/sync">Sync</NavLink>
         </nav>
         <NetSyncIndicators />
-        <span className="muted" style={{ fontSize: '0.85rem' }}>
+        <span className="user-chip">
+          {profile?.full_name ? (
+            <span className="avatar" aria-hidden="true">
+              {profile.full_name.trim().charAt(0).toUpperCase()}
+            </span>
+          ) : null}
           {profile?.full_name}
           {status === 'offline' ? ' (offline session)' : ''}
         </span>

@@ -7,23 +7,25 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg', 'icons.svg', 'gdg-logo.png', 'gdg-mark.png'],
       manifest: {
         name: 'GDGOC IET DAVV Interviews',
         short_name: 'GDGOC Interviews',
         description: 'Offline-first interview evaluation for GDGOC IET DAVV',
-        theme_color: '#1a73e8',
+        theme_color: '#4285F4',
         background_color: '#ffffff',
         display: 'standalone',
         start_url: '/',
         icons: [
+          { src: 'gdg-mark.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'gdg-mark.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: 'gdg-mark.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           { src: 'icons.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-          { src: 'icons.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
         ],
       },
       workbox: {
         // App shell only. Never cache API responses — evaluations live in IndexedDB.
-        globPatterns: ['**/*.{js,css,html,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         navigateFallback: '/index.html',
         runtimeCaching: [],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ConfirmDialog } from '../components/Ui';
+import { AnimatedNumber, ConfirmDialog } from '../components/Ui';
 import { useAuth } from '../lib/auth';
 import { listOutbox } from '../lib/idb';
 import { useOnline } from '../lib/net';
@@ -35,16 +35,22 @@ export function SyncStatus() {
       <h1>Synchronization</h1>
       <div className="card">
         <div className="grid cols-3">
-          <div className="stat">
-            <div className="value">{pending.length + errors.length}</div>
+          <div className="stat yellow">
+            <div className="value">
+              <AnimatedNumber value={pending.length + errors.length} />
+            </div>
             <div className="label">Waiting</div>
           </div>
-          <div className="stat">
-            <div className="value">{conflicts.length}</div>
+          <div className="stat red">
+            <div className="value">
+              <AnimatedNumber value={conflicts.length} />
+            </div>
             <div className="label">Conflicts</div>
           </div>
-          <div className="stat">
-            <div className="value">{synced.length}</div>
+          <div className="stat green">
+            <div className="value">
+              <AnimatedNumber value={synced.length} />
+            </div>
             <div className="label">Synced on this device</div>
           </div>
         </div>

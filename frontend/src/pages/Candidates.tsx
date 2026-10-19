@@ -7,6 +7,13 @@ import { useOnline } from '../lib/net';
 import { SortableTh, useSort } from '../components/Sortable';
 import type { Candidate, Vertical } from '../lib/types';
 
+const STATUS_TONE: Record<string, string> = {
+  pending: 'neutral',
+  in_progress: 'blue',
+  completed: 'ok',
+  no_show: 'err',
+};
+
 export function Candidates() {
   const { getToken, panels } = useAuth();
   const online = useOnline();
@@ -205,7 +212,9 @@ export function Candidates() {
                   <td>{c.priority ?? '—'}</td>
                   <td className="mono">{c.application_id ?? '—'}</td>
                   <td>
-                    <span className="badge neutral">{c.interview_status.replace('_', ' ')}</span>
+                    <span className={`badge ${STATUS_TONE[c.interview_status] ?? 'neutral'}`}>
+                      {c.interview_status.replace('_', ' ')}
+                    </span>
                   </td>
                   <td>
                     <Link className="btn small" to={`/candidates/${c.id}/evaluate`}>

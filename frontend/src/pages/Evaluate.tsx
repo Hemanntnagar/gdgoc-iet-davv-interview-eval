@@ -15,7 +15,7 @@ import { meanOf, displayScore } from '../lib/rubric';
 import { useSync } from '../lib/syncContext';
 import type { Candidate, Criterion, OutboxItem, Round, Vertical } from '../lib/types';
 import { StarRating } from '../components/eval/StarRating';
-import { ConfirmDialog } from '../components/Ui';
+import { ConfirmDialog, ProgressBar } from '../components/Ui';
 import { CandidateProfile } from '../components/eval/CandidateProfile';
 
 export function Evaluate() {
@@ -302,6 +302,7 @@ export function Evaluate() {
   }
 
   const criterionFeedbackCount = Object.values(criterionFeedbacks).filter((v) => v.trim()).length;
+  const ratedCount = criteria.filter((c) => typeof scores[c.id] === 'number').length;
 
   const confirmSummary =
     criteria.length > 0
@@ -360,6 +361,19 @@ export function Evaluate() {
               <h3 style={{ margin: 0 }}>Rubric (1–5 stars)</h3>
               <span className="badge blue" data-testid="individual-score">
                 Individual score: {displayScore(individual)}
+              </span>
+            </div>
+            <div className="btn-row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+              <div style={{ flex: 1 }}>
+                <ProgressBar
+                  value={ratedCount}
+                  max={criteria.length}
+                  tone={ratedCount === criteria.length ? 'green' : 'blue'}
+                  label="Criteria rated"
+                />
+              </div>
+              <span className="muted nowrap">
+                {ratedCount} of {criteria.length} rated
               </span>
             </div>
             {criteria.map((c) => (

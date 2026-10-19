@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { AuthShell } from '../components/Ui';
 import type { Panel } from '../lib/types';
 
 export function PanelVerify() {
@@ -34,32 +35,30 @@ export function PanelVerify() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="card">
-        <h1>Verify panel</h1>
-        <p className="muted">
-          Enter the verification code provided by the administrators for your interview panel.
-        </p>
-        {error && <div className="alert error">{error}</div>}
-        <form onSubmit={submit}>
-          <label className="field">
-            <span>Panel code</span>
-            <input
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              required
-              minLength={4}
-              maxLength={32}
-              autoCapitalize="characters"
-              autoComplete="off"
-              style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}
-            />
-          </label>
-          <button className="btn" disabled={busy} style={{ width: '100%' }}>
-            {busy ? 'Verifying…' : 'Verify panel'}
-          </button>
-        </form>
-      </div>
-    </div>
+    <AuthShell
+      compact
+      title="Verify panel"
+      subtitle="Enter the verification code provided by the administrators for your interview panel."
+    >
+      {error && <div className="alert error">{error}</div>}
+      <form onSubmit={submit}>
+        <label className="field">
+          <span>Panel code</span>
+          <input
+            value={code}
+            onChange={(e) => setCode(e.target.value.toUpperCase())}
+            required
+            minLength={4}
+            maxLength={32}
+            autoCapitalize="characters"
+            autoComplete="off"
+            style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}
+          />
+        </label>
+        <button className="btn" disabled={busy} style={{ width: '100%' }}>
+          {busy ? 'Verifying…' : 'Verify panel'}
+        </button>
+      </form>
+    </AuthShell>
   );
 }

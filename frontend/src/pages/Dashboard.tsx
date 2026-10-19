@@ -4,6 +4,7 @@ import { getLastSyncAt } from '../lib/sync';
 import { useSync } from '../lib/syncContext';
 import { useEffect, useState } from 'react';
 import { getMeta } from '../lib/idb';
+import { Stat } from '../components/Ui';
 
 export function Dashboard() {
   const { profile, panels, status, isOfflineSession } = useAuth();
@@ -33,32 +34,15 @@ export function Dashboard() {
       )}
 
       <div className="grid cols-4 mt">
-        <div className="card stat">
-          <div className="value">{panels.length}</div>
-          <div className="label">Panel{panels.length === 1 ? '' : 's'} assigned</div>
-        </div>
+        <Stat value={panels.length} label={`Panel${panels.length === 1 ? '' : 's'} assigned`} tone="blue" />
         {!isAdmin && (
           <>
-            <div className="card stat">
-              <div className="value">{pending + errors}</div>
-              <div className="label">Evaluations waiting to sync</div>
-            </div>
-            <div className="card stat">
-              <div className="value">{synced}</div>
-              <div className="label">Synchronized locally</div>
-            </div>
-            <div className="card stat">
-              <div className="value">{conflicts}</div>
-              <div className="label">Conflicts to resolve</div>
-            </div>
+            <Stat value={pending + errors} label="Evaluations waiting to sync" tone="yellow" />
+            <Stat value={synced} label="Synchronized locally" tone="green" />
+            <Stat value={conflicts} label="Conflicts to resolve" tone="red" />
           </>
         )}
-        {isAdmin && (
-          <div className="card stat">
-            <div className="value">Admin</div>
-            <div className="label">Full management access</div>
-          </div>
-        )}
+        {isAdmin && <Stat label="Full management access" tone="blue">Admin</Stat>}
       </div>
 
       {isAdmin ? (

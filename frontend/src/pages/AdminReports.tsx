@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, downloadCsv } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { ProgressBar, Stat } from '../components/Ui';
 import type { SheetConnectionStatus, Vertical } from '../lib/types';
 
 interface Overview {
@@ -132,26 +133,51 @@ export function AdminReports() {
       {overview && (
         <>
           <div className="grid cols-4 mt">
-            <div className="card stat">
-              <div className="value">{overview.totals.applicants}</div>
-              <div className="label">Applicants</div>
+            <Stat value={overview.totals.applicants} label="Applicants" tone="blue" />
+            <Stat value={overview.totals.complete} label="Fully evaluated" tone="green" />
+            <Stat
+              value={overview.totals.provisional}
+              label="Provisional (partial panel)"
+              tone="yellow"
+            />
+            <Stat label="Average of averages" tone="blue">
+              {overview.totals.avg_of_averages ?? '—'}
+            </Stat>
+          </div>
+
+          <div className="card mt">
+            <div className="btn-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
+              <h3 style={{ margin: 0 }}>Evaluation progress</h3>
+              <span className="muted">
+                {overview.totals.complete} of {overview.totals.applicants} fully evaluated
+              </span>
             </div>
-            <div className="card stat">
-              <div className="value">{overview.totals.complete}</div>
-              <div className="label">Fully evaluated</div>
-            </div>
-            <div className="card stat">
-              <div className="value">{overview.totals.provisional}</div>
-              <div className="label">Provisional (partial panel)</div>
-            </div>
-            <div className="card stat">
-              <div className="value">{overview.totals.avg_of_averages ?? '—'}</div>
-              <div className="label">Average of averages</div>
-            </div>
+            <ProgressBar
+              value={overview.totals.complete}
+              max={overview.totals.applicants}
+              tone="green"
+              label="Applicants fully evaluated"
+            />
           </div>
 
           <div className="card mt">
             <h3>Per-vertical rollup</h3>
+            <div className="bar-chart mb">
+              {overview.by_vertical.map((v) => {
+                const pct = v.applicants > 0 ? (v.evaluated / v.applicants) * 100 : 0;
+                return (
+                  <div className="bar-row" key={v.vertical}>
+                    <span className="nowrap">{v.vertical}</span>
+                    <div className="bar-track">
+                      <div className="bar-fill" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="bar-value">
+                      {v.evaluated}/{v.applicants}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
             <table className="data">
               <thead>
                 <tr>

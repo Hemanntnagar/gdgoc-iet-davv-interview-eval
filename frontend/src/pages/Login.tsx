@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { AuthShell } from '../components/Ui';
 
 export function Login() {
   const { signIn } = useAuth();
@@ -25,40 +26,36 @@ export function Login() {
   };
 
   return (
-    <div className="auth-page">
-      <div className="card">
-        <h1>Sign in</h1>
-        <p className="muted">GDGOC IET DAVV interview evaluation</p>
-        {error && <div className="alert error">{error}</div>}
-        <form onSubmit={submit}>
-          <label className="field">
-            <span>Email</span>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
-          </label>
-          <label className="field">
-            <span>Password</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-          </label>
-          <button className="btn" disabled={busy} style={{ width: '100%' }}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-        <p className="mt muted">
-          New judge? <Link to="/register">Create an account</Link>
-        </p>
-      </div>
-    </div>
+    <AuthShell title="Sign in" subtitle="GDGOC IET DAVV interview evaluation">
+      {error && <div className="alert error">{error}</div>}
+      <form onSubmit={submit}>
+        <label className="field">
+          <span>Email</span>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+        </label>
+        <label className="field">
+          <span>Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+          />
+        </label>
+        <button className="btn" disabled={busy} style={{ width: '100%' }}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+      <p className="mt muted">
+        New judge? <Link to="/register">Create an account</Link>
+      </p>
+    </AuthShell>
   );
 }
