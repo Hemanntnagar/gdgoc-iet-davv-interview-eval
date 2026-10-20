@@ -603,6 +603,22 @@ export class SupabaseStore implements Store {
     return (data as Criterion) ?? null;
   }
 
+  async deleteCriterion(id: string, force = false): Promise<{ deleted: boolean; scores: number }> {
+    const existing = await this.sb.from('criteria').select('id').eq('id', id).maybeSingle();
+    if (existing.error) throw new Error(`deleteCriterion: ${existing.error.message}`);
+    if (!existing.data) return { deleted: false, scores: 0 };
+    const counted = await this.sb
+      .from('criterion_scores')
+      .select('evaluation_id', { count: 'exact', head: true })
+      .eq('criterion_id', id);
+    if (counted.error) throw new Error(`deleteCriterion(scores): ${counted.error.message}`);
+    const scores = counted.count ?? 0;
+    if (scores > 0 && !force) return { deleted: false, scores };
+    const { error } = await this.sb.from('criteria').delete().eq('id', id);
+    if (error) throw new Error(`deleteCriterion: ${error.message}`);
+    return { deleted: true, scores };
+  }
+
   // ---- evaluations ---------------------------------------------------------
   async getEvaluation(id: string): Promise<EvaluationWithScores | null> {
     const { data: e, error } = await this.sb.from('evaluations').select('*').eq('id', id).maybeSingle();

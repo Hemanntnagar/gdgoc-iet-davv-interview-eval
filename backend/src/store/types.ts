@@ -418,6 +418,8 @@ export interface Store {
   listCriteria(roundId: string): Promise<Criterion[]>;
   createCriterion(input: Omit<Criterion, 'id' | 'created_at'>): Promise<Criterion>;
   updateCriterion(id: string, patch: Partial<Criterion>): Promise<Criterion | null>;
+  /** Hard-delete a criterion. Recorded scores block it unless force is set. */
+  deleteCriterion(id: string, force?: boolean): Promise<{ deleted: boolean; scores: number }>;
 
   getEvaluation(id: string): Promise<EvaluationWithScores | null>;
   getOfficialEvaluation(judgeId: string, candidateId: string, roundId: string): Promise<EvaluationWithScores | null>;

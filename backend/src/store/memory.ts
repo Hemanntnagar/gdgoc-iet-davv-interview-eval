@@ -479,6 +479,22 @@ export class MemoryStore implements Store {
     return c;
   }
 
+  async deleteCriterion(id: string, force = false): Promise<{ deleted: boolean; scores: number }> {
+    if (!this.criteria.has(id)) return { deleted: false, scores: 0 };
+    let scores = 0;
+    for (const list of this.criterionScores.values()) {
+      scores += list.filter((s) => s.criterion_id === id).length;
+    }
+    if (scores > 0 && !force) return { deleted: false, scores };
+    if (scores > 0) {
+      for (const [evaluationId, list] of this.criterionScores) {
+        this.criterionScores.set(evaluationId, list.filter((s) => s.criterion_id !== id));
+      }
+    }
+    this.criteria.delete(id);
+    return { deleted: true, scores };
+  }
+
   async getEvaluation(id: string): Promise<EvaluationWithScores | null> {
     const e = this.evaluations.get(id);
     if (!e) return null;

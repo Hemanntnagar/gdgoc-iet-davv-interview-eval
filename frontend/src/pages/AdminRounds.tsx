@@ -145,11 +145,38 @@ export function AdminRounds() {
   const toggleCriterion = async (c: Criterion) => {
     const token = await getToken();
     if (!token) return;
-    await api(`/criteria/${c.id}`, {
-      method: 'PATCH',
-      token,
-      body: JSON.stringify({ is_active: !c.is_active }),
-    });
+    try {
+      const res = await api<{ criterion: Criterion }>(`/criteria/${c.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ is_active: !c.is_active }),
+      });
+      setCriteria((prev) => prev.map((x) => (x.id === c.id ? res.criterion : x)));
+      setError(null);
+      setNotice(res.criterion.is_active ? 'Criterion enabled.' : 'Criterion disabled.');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to update criterion');
+    }
+  };
+
+  const deleteCriterion = async (c: Criterion) => {
+    const token = await getToken();
+    if (!token) return;
+    if (!window.confirm(`Delete criterion "${c.name}"?`)) return;
+    try {
+      try {
+        await api(`/criteria/${c.id}`, { method: 'DELETE', token });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+        if (!window.confirm(`${e.message}\n\nDelete it and its recorded scores permanently?`)) return;
+        await api(`/criteria/${c.id}?force=true`, { method: 'DELETE', token });
+      }
+      setError(null);
+      setNotice('Criterion deleted.');
+      setCriteria((prev) => prev.filter((x) => x.id !== c.id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to delete criterion');
+    }
   };
 
   return (
@@ -247,6 +274,7 @@ export function AdminRounds() {
                   <SortableTh label="Range" sortKey="range" state={criterionSort} />
                   <SortableTh label="Weight" sortKey="weight" state={criterionSort} />
                   <SortableTh label="Active" sortKey="active" state={criterionSort} />
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -261,9 +289,14 @@ export function AdminRounds() {
                     </td>
                     <td>{c.weight}</td>
                     <td>
-                      <button className="btn secondary small" onClick={() => void toggleCriterion(c)}>
-                        {c.is_active ? 'Disable' : 'Enable'}
-                      </button>
+                      <div className="btn-row">
+                        <button className="btn secondary small" onClick={() => void toggleCriterion(c)}>
+                          {c.is_active ? 'Disable' : 'Enable'}
+                        </button>
+                        <button className="btn danger small" onClick={() => void deleteCriterion(c)}>
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
