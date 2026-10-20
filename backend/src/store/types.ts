@@ -123,6 +123,7 @@ export interface Evaluation {
   status: 'submitted' | 'withdrawn';
   overall_score: number | null;
   feedback: string;
+  preferred_vertical_id: string | null;
   version: number;
   client_created_at: string | null;
   submitted_at: string;
@@ -197,6 +198,7 @@ export interface SubmitEvaluationInput {
   overall_score?: number | null; // used when round has no active criteria
   scores: Record<string, number>; // criterion_id -> score
   criterion_feedbacks?: Record<string, string>; // criterion_id -> written feedback
+  preferred_vertical_id?: string | null;
   client_created_at?: string | null;
 }
 
@@ -441,8 +443,13 @@ export interface Store {
   updateEvaluation(
     id: string,
     judgeId: string,
-    patch: { feedback: string; overall_score: number | null; scores: CriterionScore[] },
-  ): Promise<SubmitOutcome>;
+  patch: {
+    feedback: string;
+    overall_score: number | null;
+    scores: CriterionScore[];
+    preferred_vertical_id: string | null;
+  },
+): Promise<SubmitOutcome>;
 
   results(scope: CandidateScope, filters: CandidateFilters): Promise<ResultRow[]>;
 

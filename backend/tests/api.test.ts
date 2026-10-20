@@ -355,6 +355,21 @@ describe('evaluations, averages and duplicates', () => {
     expect(res.body.evaluation.overall_score).toBe(7);
   });
 
+  it('stores the preferred vertical chosen during the interview', async () => {
+    const preferred = randomUUID();
+    const res = await submit(
+      s.judge1Id,
+      { [s.criteriaIds[0]]: 8, [s.criteriaIds[1]]: 6 },
+      randomUUID(),
+      { preferred_vertical_id: preferred },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.evaluation.preferred_vertical_id).toBe(preferred);
+    const mine = await request(app).get('/api/evaluations/mine').set(auth(s.judge1Id));
+    const row = mine.body.evaluations.find((e: any) => e.id === res.body.evaluation.id);
+    expect(row.preferred_vertical_id).toBe(preferred);
+  });
+
   it('rejects out-of-range scores', async () => {
     const res = await submit(s.judge1Id, { [s.criteriaIds[0]]: 99, [s.criteriaIds[1]]: 5 });
     expect(res.status).toBe(400);

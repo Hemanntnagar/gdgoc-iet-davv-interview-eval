@@ -87,6 +87,7 @@ export function evaluationRoutes(store: Store): Router {
           overall_score: parsed.data.overall_score ?? null,
           scores: parsed.data.scores ?? {},
           criterion_feedbacks: parsed.data.criterion_feedbacks ?? {},
+          preferred_vertical_id: parsed.data.preferred_vertical_id ?? null,
         },
         { replaceExisting: true },
       );

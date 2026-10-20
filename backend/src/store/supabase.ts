@@ -724,6 +724,8 @@ export class SupabaseStore implements Store {
           feedback: input.feedback,
           overall_score: computed.overall_score,
           scores: computed.scores,
+          preferred_vertical_id:
+            input.preferred_vertical_id === undefined ? existing.preferred_vertical_id : input.preferred_vertical_id,
         });
       }
       return { status: 'ok', evaluation: existing, idempotent: true };
@@ -746,6 +748,10 @@ export class SupabaseStore implements Store {
           feedback: input.feedback,
           overall_score: computed.overall_score,
           scores: computed.scores,
+          preferred_vertical_id:
+            input.preferred_vertical_id === undefined
+              ? official.preferred_vertical_id
+              : input.preferred_vertical_id,
         });
       }
       return { status: 'duplicate', existing: official };
@@ -760,6 +766,7 @@ export class SupabaseStore implements Store {
       status: 'submitted',
       overall_score: computed.overall_score,
       feedback: input.feedback,
+      preferred_vertical_id: input.preferred_vertical_id ?? null,
       client_created_at: input.client_created_at ?? null,
     });
     if (error) {
@@ -788,7 +795,12 @@ export class SupabaseStore implements Store {
   async updateEvaluation(
     id: string,
     judgeId: string,
-    patch: { feedback: string; overall_score: number | null; scores: CriterionScore[] },
+    patch: {
+      feedback: string;
+      overall_score: number | null;
+      scores: CriterionScore[];
+      preferred_vertical_id: string | null;
+    },
   ): Promise<SubmitOutcome> {
     const existing = await this.getEvaluation(id);
     if (!existing) return { status: 'error', message: 'Evaluation not found' };
@@ -798,6 +810,7 @@ export class SupabaseStore implements Store {
       .update({
         feedback: patch.feedback,
         overall_score: patch.overall_score,
+        preferred_vertical_id: patch.preferred_vertical_id,
         version: existing.version + 1,
       })
       .eq('id', id)

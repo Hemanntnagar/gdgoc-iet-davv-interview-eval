@@ -6,7 +6,7 @@ import { listOutbox } from '../lib/idb';
 import { useOnline } from '../lib/net';
 import { useSync } from '../lib/syncContext';
 import { SortableTh, useSort } from '../components/Sortable';
-import type { EvaluationWithScores, OutboxItem } from '../lib/types';
+import type { EvaluationWithScores, OutboxItem, Vertical } from '../lib/types';
 
 const statusBadge = (s: OutboxItem['status']) => {
   switch (s) {
@@ -29,6 +29,7 @@ export function MyEvaluations() {
   const { refresh } = useSync();
   const [server, setServer] = useState<EvaluationWithScores[] | null>(null);
   const [local, setLocal] = useState<OutboxItem[]>([]);
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
 
   const getSortValue = useCallback((e: EvaluationWithScores, key: string): unknown => {
     switch (key) {
@@ -47,6 +48,14 @@ export function MyEvaluations() {
     }
   }, []);
   const sort = useSort(server ?? [], getSortValue, 'submitted', 'desc');
+
+  useEffect(() => {
+    if (!online) return;
+    void getToken()
+      .then((token) => (token ? api<{ verticals: Vertical[] }>('/verticals', { token }) : null))
+      .then((r) => r && setVerticals(r.verticals))
+      .catch(() => undefined);
+  }, [online, getToken]);
 
   useEffect(() => {
     void (async () => {
@@ -116,6 +125,7 @@ export function MyEvaluations() {
               <tr>
                 <SortableTh label="Candidate" sortKey="candidate" state={sort} />
                 <SortableTh label="Round" sortKey="round" state={sort} />
+                <th>Preferred vertical</th>
                 <SortableTh label="Score" sortKey="score" state={sort} />
                 <SortableTh label="Version" sortKey="version" state={sort} />
                 <SortableTh label="Submitted" sortKey="submitted" state={sort} />
@@ -127,6 +137,11 @@ export function MyEvaluations() {
                 <tr key={e.id}>
                   <td>{e.candidate_name ?? e.candidate_id}</td>
                   <td>{e.round_name ?? e.round_id}</td>
+                  <td>
+                    {e.preferred_vertical_id
+                      ? verticals.find((v) => v.id === e.preferred_vertical_id)?.name ?? e.preferred_vertical_id
+                      : '—'}
+                  </td>
                   <td>{e.overall_score ?? '—'}</td>
                   <td>v{e.version}</td>
                   <td>{new Date(e.submitted_at).toLocaleString()}</td>

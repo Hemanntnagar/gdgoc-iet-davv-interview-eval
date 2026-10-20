@@ -35,6 +35,7 @@ export function Evaluate() {
   const [feedback, setFeedback] = useState('');
   const [existingLocal, setExistingLocal] = useState<OutboxItem | null>(null);
   const [serverEvalId, setServerEvalId] = useState<string | null>(null);
+  const [preferredVertical, setPreferredVertical] = useState('');
   const [message, setMessage] = useState<{ kind: 'ok' | 'err' | 'info' | 'warn'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [savingLocal, setSavingLocal] = useState(false);
@@ -130,12 +131,14 @@ export function Evaluate() {
       setExistingLocal(match ?? null);
       if (match) {
         setFeedback(match.feedback);
+        setPreferredVertical(match.preferred_vertical_id ?? '');
         if (match.overall_score !== null) setOverall(String(match.overall_score));
         const s: Record<string, number | null> = {};
         for (const [k, v] of Object.entries(match.scores)) s[k] = v;
         setScores(s);
       } else {
         setFeedback('');
+        setPreferredVertical('');
         setOverall('');
         setScores({});
       }
@@ -160,6 +163,7 @@ export function Evaluate() {
         if (!mine || cancelled) return;
         setServerEvalId(mine.id);
         setFeedback(mine.feedback ?? '');
+        setPreferredVertical(mine.preferred_vertical_id ?? '');
         const s: Record<string, number | null> = {};
         for (const row of mine.scores) s[row.criterion_id] = row.score;
         setScores(s);
@@ -218,6 +222,7 @@ export function Evaluate() {
       overall_score: computedOverall,
       scores: sc,
       criterion_feedbacks: {},
+      preferred_vertical_id: preferredVertical || null,
       client_created_at: new Date().toISOString(),
       status: 'pending',
       attempts: existingLocal?.attempts ?? 0,
@@ -265,6 +270,7 @@ export function Evaluate() {
             overall_score: criteria.length === 0 ? payload.overall_score : null,
             scores: payload.scores,
             criterion_feedbacks: payload.criterion_feedbacks,
+            preferred_vertical_id: payload.preferred_vertical_id ?? null,
             client_created_at: payload.client_created_at,
             replace_existing:
               serverEvalId !== null ||
@@ -436,12 +442,24 @@ export function Evaluate() {
         )}
 
         <label className="field mt">
-          <span>Overall written feedback (optional)</span>
+          <span>Preferred vertical (based on interview)</span>
+          <select value={preferredVertical} onChange={(e) => setPreferredVertical(e.target.value)}>
+            <option value="">No preference</option>
+            {verticals.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="field mt">
+          <span>Overall written feedback</span>
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
             maxLength={5000}
-            placeholder="Strengths, concerns, recommendation…"
+            placeholder="Strengths, concerns, recommendation"
           />
         </label>
 

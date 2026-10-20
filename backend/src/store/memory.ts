@@ -549,6 +549,7 @@ export class MemoryStore implements Store {
       const samePayload =
         existing.feedback === input.feedback &&
         existing.overall_score === computed.overall_score &&
+        existing.preferred_vertical_id === (input.preferred_vertical_id ?? null) &&
         JSON.stringify([...(this.criterionScores.get(input.id) ?? [])].sort((a, b) => a.criterion_id.localeCompare(b.criterion_id))) ===
           JSON.stringify([...computed.scores].sort((a, b) => a.criterion_id.localeCompare(b.criterion_id)));
       if (samePayload) {
@@ -559,6 +560,7 @@ export class MemoryStore implements Store {
       if (opts.replaceExisting && round?.allow_edit_after_submit) {
         existing.feedback = input.feedback;
         existing.overall_score = computed.overall_score;
+        existing.preferred_vertical_id = input.preferred_vertical_id ?? null;
         existing.version += 1;
         existing.updated_at = this.now();
         this.criterionScores.set(existing.id, computed.scores);
@@ -578,6 +580,7 @@ export class MemoryStore implements Store {
       if (opts.replaceExisting && round.allow_edit_after_submit) {
         official.feedback = input.feedback;
         official.overall_score = computed.overall_score;
+        official.preferred_vertical_id = input.preferred_vertical_id ?? null;
         official.version += 1;
         official.updated_at = this.now();
         this.criterionScores.set(official.id, computed.scores);
@@ -594,6 +597,7 @@ export class MemoryStore implements Store {
       status: 'submitted',
       overall_score: computed.overall_score,
       feedback: input.feedback,
+      preferred_vertical_id: input.preferred_vertical_id ?? null,
       version: 1,
       client_created_at: input.client_created_at ?? null,
       submitted_at: this.now(),
@@ -607,13 +611,19 @@ export class MemoryStore implements Store {
   async updateEvaluation(
     id: string,
     judgeId: string,
-    patch: { feedback: string; overall_score: number | null; scores: CriterionScore[] },
+    patch: {
+      feedback: string;
+      overall_score: number | null;
+      scores: CriterionScore[];
+      preferred_vertical_id: string | null;
+    },
   ): Promise<SubmitOutcome> {
     const e = this.evaluations.get(id);
     if (!e) return { status: 'error', message: 'Evaluation not found' };
     if (e.judge_id !== judgeId) return { status: 'error', message: 'Not your evaluation' };
     e.feedback = patch.feedback;
     e.overall_score = patch.overall_score;
+    e.preferred_vertical_id = patch.preferred_vertical_id;
     e.version += 1;
     e.updated_at = this.now();
     this.criterionScores.set(e.id, patch.scores);
