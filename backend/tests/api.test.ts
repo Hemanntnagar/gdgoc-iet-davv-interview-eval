@@ -713,3 +713,58 @@ describe('round creation', () => {
     expect(res.status).toBe(403);
   });
 });
+
+describe('round deletion', () => {
+  let app: ReturnType<typeof makeApp>['app'];
+  let store: MemoryStore;
+  let s: Seed;
+  beforeEach(async () => {
+    ({ app, store } = makeApp());
+    s = await seed(store);
+  });
+
+  it('deletes a round and its criteria when it has no evaluations', async () => {
+    const res = await request(app).delete(`/api/rounds/${s.freeRoundId}`).set(auth(s.adminId));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deleted: true, evaluations: 0 });
+    expect(await store.getRound(s.freeRoundId)).toBeNull();
+    expect(await store.listCriteria(s.freeRoundId)).toHaveLength(0);
+  });
+
+  it('refuses to delete an evaluated round unless forced', async () => {
+    await store.addPanelMember(s.panelId, s.judge1Id, s.adminId);
+    const evaluation = await request(app)
+      .post('/api/evaluations')
+      .set(auth(s.judge1Id))
+      .send({
+        id: randomUUID(),
+        candidate_id: s.candidateId,
+        round_id: s.roundId,
+        feedback: 'Solid',
+        scores: { [s.criteriaIds[0]]: 8, [s.criteriaIds[1]]: 7 },
+      });
+    expect(evaluation.status).toBe(201);
+
+    const blocked = await request(app).delete(`/api/rounds/${s.roundId}`).set(auth(s.adminId));
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe('round_has_evaluations');
+    expect(await store.getRound(s.roundId)).not.toBeNull();
+
+    const forced = await request(app)
+      .delete(`/api/rounds/${s.roundId}?force=true`)
+      .set(auth(s.adminId));
+    expect(forced.status).toBe(200);
+    expect(forced.body.evaluations).toBe(1);
+    expect(await store.getRound(s.roundId)).toBeNull();
+  });
+
+  it('rejects deletion by a judge', async () => {
+    const res = await request(app).delete(`/api/rounds/${s.freeRoundId}`).set(auth(s.judge1Id));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for an unknown round', async () => {
+    const res = await request(app).delete(`/api/rounds/${randomUUID()}`).set(auth(s.adminId));
+    expect(res.status).toBe(404);
+  });
+});

@@ -447,6 +447,21 @@ export class MemoryStore implements Store {
     return r;
   }
 
+  async deleteRound(id: string, force = false): Promise<{ deleted: boolean; evaluations: number }> {
+    if (!this.rounds.has(id)) return { deleted: false, evaluations: 0 };
+    const evaluations = [...this.evaluations.values()].filter((e) => e.round_id === id);
+    if (evaluations.length > 0 && !force) return { deleted: false, evaluations: evaluations.length };
+    for (const e of evaluations) {
+      this.evaluations.delete(e.id);
+      this.criterionScores.delete(e.id);
+    }
+    for (const [criterionId, criterion] of this.criteria) {
+      if (criterion.round_id === id) this.criteria.delete(criterionId);
+    }
+    this.rounds.delete(id);
+    return { deleted: true, evaluations: evaluations.length };
+  }
+
   async listCriteria(roundId: string): Promise<Criterion[]> {
     return [...this.criteria.values()]
       .filter((c) => c.round_id === roundId)

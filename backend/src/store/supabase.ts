@@ -556,6 +556,26 @@ export class SupabaseStore implements Store {
     if (error) throw new Error(`updateRound: ${error.message}`);
     return (data as Round) ?? null;
   }
+  async deleteRound(id: string, force = false): Promise<{ deleted: boolean; evaluations: number }> {
+    const existing = await this.sb.from('evaluation_rounds').select('id').eq('id', id).maybeSingle();
+    if (existing.error) throw new Error(`deleteRound: ${existing.error.message}`);
+    if (!existing.data) return { deleted: false, evaluations: 0 };
+    const counted = await this.sb
+      .from('evaluations')
+      .select('id', { count: 'exact', head: true })
+      .eq('round_id', id);
+    if (counted.error) throw new Error(`deleteRound(evaluations): ${counted.error.message}`);
+    const evaluations = counted.count ?? 0;
+    if (evaluations > 0 && !force) return { deleted: false, evaluations };
+    if (evaluations > 0) {
+      const deleted = await this.sb.from('evaluations').delete().eq('round_id', id);
+      if (deleted.error) throw new Error(`deleteRound(evaluations): ${deleted.error.message}`);
+    }
+    const { error } = await this.sb.from('evaluation_rounds').delete().eq('id', id);
+    if (error) throw new Error(`deleteRound: ${error.message}`);
+    return { deleted: true, evaluations };
+  }
+
   async listCriteria(roundId: string): Promise<Criterion[]> {
     return unwrap(
       await this.sb

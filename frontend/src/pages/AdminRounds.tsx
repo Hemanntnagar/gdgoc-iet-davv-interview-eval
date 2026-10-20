@@ -102,6 +102,30 @@ export function AdminRounds() {
     await load();
   };
 
+  const deleteRound = async (r: Round) => {
+    const token = await getToken();
+    if (!token) return;
+    if (!window.confirm(`Delete round "${r.name}"? Its criteria will be removed permanently.`)) return;
+    try {
+      try {
+        await api(`/rounds/${r.id}`, { method: 'DELETE', token });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+        if (!window.confirm(`${e.message}\n\nDelete the round and those evaluations permanently?`)) return;
+        await api(`/rounds/${r.id}?force=true`, { method: 'DELETE', token });
+      }
+      setError(null);
+      setNotice('Round deleted.');
+      if (selected === r.id) {
+        setSelected('');
+        setCriteria([]);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to delete round');
+    }
+  };
+
   const createCriterion = async () => {
     const token = await getToken();
     if (!token || !selected || !newCriterion.name.trim()) return;
@@ -174,6 +198,7 @@ export function AdminRounds() {
                 <SortableTh label="Open" sortKey="open" state={roundSort} />
                 <SortableTh label="Edits allowed" sortKey="edits" state={roundSort} />
                 <SortableTh label="Closes" sortKey="closes" state={roundSort} />
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -198,6 +223,11 @@ export function AdminRounds() {
                   </td>
                   <td>{r.allow_edit_after_submit ? 'Yes' : 'No'}</td>
                   <td className="muted">{r.closes_at ? `closes ${new Date(r.closes_at).toLocaleString()}` : ''}</td>
+                  <td>
+                    <button className="btn danger small" onClick={() => void deleteRound(r)}>
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -249,6 +279,16 @@ export function AdminRounds() {
               <input
                 value={newCriterion.name}
                 onChange={(e) => setNewCriterion({ ...newCriterion, name: e.target.value })}
+              />
+            </div>
+            <div style={{ flex: '1 1 100%' }}>
+              <label>Description</label>
+              <textarea
+                rows={2}
+                maxLength={500}
+                value={newCriterion.description}
+                onChange={(e) => setNewCriterion({ ...newCriterion, description: e.target.value })}
+                placeholder="What judges should look for (optional)"
               />
             </div>
             <div>

@@ -412,6 +412,8 @@ export interface Store {
     id: string,
     patch: Partial<{ name: string; is_open: boolean; allow_edit_after_submit: boolean; closes_at: string | null }>,
   ): Promise<Round | null>;
+  /** Hard-delete a round (criteria cascade). Evaluations block it unless force is set. */
+  deleteRound(id: string, force?: boolean): Promise<{ deleted: boolean; evaluations: number }>;
 
   listCriteria(roundId: string): Promise<Criterion[]>;
   createCriterion(input: Omit<Criterion, 'id' | 'created_at'>): Promise<Criterion>;
