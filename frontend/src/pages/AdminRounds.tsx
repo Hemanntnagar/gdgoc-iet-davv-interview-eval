@@ -250,7 +250,7 @@ export function AdminRounds() {
                   </td>
                   <td>{r.allow_edit_after_submit ? 'Yes' : 'No'}</td>
                   <td className="muted">{r.closes_at ? `closes ${new Date(r.closes_at).toLocaleString()}` : ''}</td>
-                  <td>
+                  <td className="actions-cell">
                     <button className="btn danger small" onClick={() => void deleteRound(r)}>
                       Delete
                     </button>
@@ -288,7 +288,7 @@ export function AdminRounds() {
                       {c.min_score}–{c.max_score}
                     </td>
                     <td>{c.weight}</td>
-                    <td>
+                    <td className="actions-cell">
                       <div className="btn-row">
                         <button className="btn secondary small" onClick={() => void toggleCriterion(c)}>
                           {c.is_active ? 'Disable' : 'Enable'}
