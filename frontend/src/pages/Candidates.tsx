@@ -42,11 +42,20 @@ export function Candidates() {
         if (shift) qs.set('shift', shift);
         if (status) qs.set('interviewStatus', status);
         const res = await api<{ candidates: Candidate[] }>(`/candidates?${qs}`, { token });
-        setCandidates(res.candidates);
+        // Candidates this judge has already evaluated move to "My evaluations".
+        const evaluated = new Set<string>();
+        try {
+          const mine = await api<{ evaluations: { candidate_id: string }[] }>('/evaluations/mine', { token });
+          for (const e of mine.evaluations) evaluated.add(e.candidate_id);
+        } catch {
+          /* pending list still works if history cannot be loaded */
+        }
+        const pending = res.candidates.filter((c) => !evaluated.has(c.id));
+        setCandidates(pending);
         setSource('server');
         if (search === '' && branch === '' && !panelId && !verticalId && !shift && !status) {
-          // Cache the unfiltered panel list for offline use
-          void saveCandidates(res.candidates);
+          // Cache the unfiltered pending list for offline use
+          void saveCandidates(pending);
         }
         return;
       } catch (e) {

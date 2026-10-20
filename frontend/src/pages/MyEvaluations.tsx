@@ -119,6 +119,7 @@ export function MyEvaluations() {
                 <SortableTh label="Score" sortKey="score" state={sort} />
                 <SortableTh label="Version" sortKey="version" state={sort} />
                 <SortableTh label="Submitted" sortKey="submitted" state={sort} />
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -129,6 +130,11 @@ export function MyEvaluations() {
                   <td>{e.overall_score ?? '—'}</td>
                   <td>v{e.version}</td>
                   <td>{new Date(e.submitted_at).toLocaleString()}</td>
+                  <td>
+                    <Link className="btn secondary small" to={`/candidates/${e.candidate_id}/evaluate`}>
+                      Edit
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

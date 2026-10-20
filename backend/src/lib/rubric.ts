@@ -2,18 +2,23 @@
  * The five initial evaluation criteria (editable by admins before/during
  * recruitment — these are only the defaults created with each new round).
  *
- * Scale: clickable 1–5 star rating with these exact descriptions.
+ * Scale: clickable 1–10 star rating with these exact descriptions.
  */
 export const RATING_DESCRIPTIONS: Record<number, string> = {
   1: 'Needs significant improvement',
-  2: 'Below expectations',
-  3: 'Meets expectations',
-  4: 'Exceeds expectations',
-  5: 'Exceptional',
+  2: 'Well below expectations',
+  3: 'Below expectations',
+  4: 'Slightly below expectations',
+  5: 'Meets expectations',
+  6: 'Slightly above expectations',
+  7: 'Above expectations',
+  8: 'Exceeds expectations',
+  9: 'Strongly exceeds expectations',
+  10: 'Exceptional',
 };
 
 export const STAR_MIN = 1;
-export const STAR_MAX = 5;
+export const STAR_MAX = 10;
 
 export interface DefaultCriterion {
   name: string;

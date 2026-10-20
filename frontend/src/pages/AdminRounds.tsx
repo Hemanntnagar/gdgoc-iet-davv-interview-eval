@@ -11,7 +11,7 @@ export function AdminRounds() {
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [newRound, setNewRound] = useState({ name: '', allow_edit_after_submit: false });
+  const [newRound, setNewRound] = useState({ name: '', allow_edit_after_submit: true });
   const [newCriterion, setNewCriterion] = useState({
     name: '',
     description: '',
@@ -86,7 +86,7 @@ export function AdminRounds() {
           allow_edit_after_submit: newRound.allow_edit_after_submit,
         }),
       });
-      setNewRound({ name: '', allow_edit_after_submit: false });
+      setNewRound({ name: '', allow_edit_after_submit: true });
       setNotice('Round created.');
       await load();
     } catch (e) {
