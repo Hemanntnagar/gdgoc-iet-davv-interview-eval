@@ -759,7 +759,7 @@ export class SupabaseStore implements Store {
           evaluation_id: input.id,
           criterion_id: s.criterion_id,
           score: s.score,
-          feedback: s.feedback ?? null,
+          feedback: s.feedback ?? '',
         })),
       );
       if (scoreErr) return { status: 'error', message: `Failed to save scores: ${scoreErr.message}` };
@@ -793,7 +793,7 @@ export class SupabaseStore implements Store {
           evaluation_id: id,
           criterion_id: s.criterion_id,
           score: s.score,
-          feedback: s.feedback ?? null,
+          feedback: s.feedback ?? '',
         })),
       );
     }
