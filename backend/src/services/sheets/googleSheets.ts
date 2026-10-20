@@ -160,6 +160,49 @@ export async function appendRow(
   });
 }
 
+/** Tab titles cannot contain these characters and are capped at 100 chars. */
+export function sanitizeTabTitle(value: string): string {
+  const cleaned = String(value ?? '')
+    .replace(/[[\]:*?/\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+  return cleaned || 'Sheet';
+}
+
+/** Create the tab when missing; returns true when it was created. */
+export async function ensureTab(cfg: SheetsConnectionConfig, title: string): Promise<boolean> {
+  const sheets = makeClient(cfg.credentialsJson);
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: cfg.spreadsheetId,
+    fields: 'sheets.properties(title)',
+  });
+  const exists = (meta.data.sheets ?? []).some((s) => s.properties?.title === title);
+  if (exists) return false;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: cfg.spreadsheetId,
+    requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+  });
+  return true;
+}
+
+/** Replace a tab's values starting at A1 (header row included). */
+export async function overwriteTab(
+  cfg: SheetsConnectionConfig,
+  tabTitle: string,
+  values: unknown[][],
+): Promise<void> {
+  const sheets = makeClient(cfg.credentialsJson);
+  const range = `'${tabTitle.replace(/'/g, "''")}'`;
+  await sheets.spreadsheets.values.clear({ spreadsheetId: cfg.spreadsheetId, range });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: cfg.spreadsheetId,
+    range: `${range}!A1`,
+    valueInputOption: 'RAW',
+    requestBody: { values },
+  });
+}
+
 /** Find the 1-based row number whose key column matches (exact, then case-insensitive). */
 export function findRowByKey(values: unknown[][], keyColumn: number, key: string): number | null {
   if (!key) return null;

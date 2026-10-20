@@ -1,4 +1,4 @@
-import { columnIndex, findRowByKey, readTab, spreadsheetUrl, writeBatch, appendRow, isConfigured, listTabs, parseSheetLink, SheetsUnavailableError } from '../sheets/googleSheets.js';
+import { columnIndex, ensureTab, findRowByKey, readTab, spreadsheetUrl, writeBatch, appendRow, isConfigured, listTabs, parseSheetLink, overwriteTab, sanitizeTabTitle, SheetsUnavailableError } from '../sheets/googleSheets.js';
 import type { SheetsConnectionConfig } from '../sheets/googleSheets.js';
 import { COLUMN_ALIASES, normalizeHeader } from '../importer/columns.js';
 import type { AppConfig } from '../../config.js';
@@ -313,6 +313,174 @@ export async function pushToSheets(store: Store, config: AppConfig, actorId: str
         detail: msg,
         actor_id: actorId,
       });
+    }
+  }
+  return summary;
+}
+
+/**
+ * Header row for applicant exports. Labels stay alias-compatible with the
+ * importer (e.g. "Roll Number" -> roll_number) and include the evaluation
+ * columns pushed by `pushToSheets`.
+ */
+export const APPLICANT_EXPORT_HEADER = [
+  'Roll Number',
+  'Applicant Name',
+  'Email',
+  'Vertical',
+  'Branch',
+  'Panel',
+  'Shift',
+  'Priority',
+  'LinkedIn',
+  'GitHub',
+  'Team Message',
+  'Remarks',
+  'Evaluations Received',
+  'Evaluations Expected',
+  'Completion',
+  'Individual Scores',
+  'Final Average',
+  'Judge Count',
+];
+
+export interface ExportSummary {
+  written: { worksheet: string; rows: number; created: boolean }[];
+  skipped: string[];
+  connection_ok: boolean;
+  error?: string;
+}
+
+/**
+ * Rewrite one tab per vertical with the header row and every active applicant.
+ * Tabs are created when missing; a vertical mapped to a sheet link writes to
+ * the resolved tab and keeps the link mapping.
+ */
+export async function exportApplicantsToSheets(
+  store: Store,
+  config: AppConfig,
+  actorId: string,
+): Promise<ExportSummary> {
+  const summary: ExportSummary = { written: [], skipped: [], connection_ok: false };
+  const cfg = sheetsConfig(store, config);
+  const connection = await store.getSpreadsheetConnection();
+  const spreadsheetId = connection?.spreadsheet_id || cfg?.spreadsheetId || '';
+  if (!cfg || !spreadsheetId) {
+    summary.error = 'Google Sheets credentials or spreadsheet ID not configured';
+    return summary;
+  }
+  const effective: SheetsConnectionConfig = { credentialsJson: cfg.credentialsJson, spreadsheetId };
+  summary.connection_ok = true;
+
+  const [verticals, panels, candidates] = await Promise.all([
+    store.listVerticals(),
+    store.listPanels(),
+    store.listCandidates({ admin: true }, { includeArchived: false }),
+  ]);
+  const panelNames = new Map(panels.map((p) => [p.id, p.name]));
+  const groups = new Map<string, Candidate[]>();
+  const unassigned: Candidate[] = [];
+  for (const c of candidates) {
+    if (!c.vertical_id) {
+      unassigned.push(c);
+      continue;
+    }
+    const list = groups.get(c.vertical_id) ?? [];
+    list.push(c);
+    groups.set(c.vertical_id, list);
+  }
+
+  const rowFor = (c: Candidate, verticalName: string): unknown[] => [
+    c.roll_number || c.application_id || '',
+    c.full_name,
+    c.email ?? '',
+    verticalName,
+    c.branch ?? '',
+    panelNames.get(c.panel_id) ?? '',
+    c.shift ?? '',
+    c.priority ?? '',
+    c.linkedin_url ?? '',
+    c.github_url ?? '',
+    c.team_message ?? '',
+    c.remarks ?? '',
+    '',
+    '',
+    '',
+    '',
+    '',
+    '',
+  ];
+
+  const writeTab = async (
+    reference: SheetsConnectionConfig,
+    tabTitle: string,
+    rows: Candidate[],
+    verticalName: string,
+  ): Promise<{ created: boolean; rows: number }> => {
+    const created = await ensureTab(reference, tabTitle);
+    await overwriteTab(reference, tabTitle, [
+      APPLICANT_EXPORT_HEADER,
+      ...rows.map((c) => rowFor(c, verticalName)),
+    ]);
+    return { created, rows: rows.length };
+  };
+
+  const byRoll = (a: Candidate, b: Candidate) =>
+    (a.roll_number || a.full_name).localeCompare(b.roll_number || b.full_name);
+
+  for (const v of verticals) {
+    const rows = (groups.get(v.id) ?? []).sort(byRoll);
+    if (rows.length === 0) {
+      summary.skipped.push(`vertical "${v.key}" has no applicants`);
+      continue;
+    }
+    let tabTitle = '';
+    try {
+      const ref = parseSheetLink(v.worksheet ?? '');
+      let reference = effective;
+      if (ref.spreadsheetId && v.worksheet) {
+        const resolved = await resolveWorksheet(effective, v.worksheet);
+        reference = resolved.reference;
+        tabTitle = resolved.tabTitle;
+      } else {
+        tabTitle = sanitizeTabTitle(v.worksheet || v.name);
+      }
+      const res = await writeTab(reference, tabTitle, rows, v.name);
+      summary.written.push({ worksheet: tabTitle, rows: res.rows, created: res.created });
+      if (!ref.spreadsheetId && v.worksheet !== tabTitle) {
+        await store.updateVertical(v.id, { worksheet: tabTitle });
+      }
+      await store.logSpreadsheetSync({
+        connection_id: connection?.id ?? null,
+        direction: 'to_sheet',
+        operation: 'export',
+        row_key: tabTitle,
+        status: 'ok',
+        detail: `rows=${rows.length}`,
+        actor_id: actorId,
+      });
+    } catch (e) {
+      const msg = String((e as Error).message ?? e);
+      summary.skipped.push(`vertical "${v.key}": ${msg}`);
+      await store.logSpreadsheetSync({
+        connection_id: connection?.id ?? null,
+        direction: 'to_sheet',
+        operation: 'export',
+        row_key: tabTitle || v.key,
+        status: 'error',
+        detail: msg,
+        actor_id: actorId,
+      });
+    }
+  }
+
+  if (unassigned.length) {
+    unassigned.sort(byRoll);
+    try {
+      const res = await writeTab(effective, 'Unassigned', unassigned, 'Unassigned');
+      summary.written.push({ worksheet: 'Unassigned', rows: res.rows, created: res.created });
+    } catch (e) {
+      summary.skipped.push(`unassigned applicants: ${String((e as Error).message ?? e)}`);
     }
   }
   return summary;

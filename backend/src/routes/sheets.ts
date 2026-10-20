@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { badRequest, HttpError } from '../lib/errors.js';
 import { requireAuth, type AuthedRequest } from '../lib/auth.js';
-import { connectionStatus, pullFromSheets, pushToSheets } from '../services/sync-spreadsheet/engine.js';
+import { connectionStatus, exportApplicantsToSheets, pullFromSheets, pushToSheets } from '../services/sync-spreadsheet/engine.js';
 import { describeSheetsError, listTabs, normalizeSpreadsheetId, spreadsheetUrl } from '../services/sheets/googleSheets.js';
 import type { AppConfig } from '../config.js';
 import type { Store } from '../store/types.js';
@@ -116,6 +116,24 @@ export function sheetSyncRoutes(store: Store, config: AppConfig): Router {
         await store.saveSpreadsheetConnection({
           last_sync_at: new Date().toISOString(),
           last_sync_status: summary.pushed.some((p) => p.status === 'failed') ? 'error' : 'ok',
+          last_sync_error: summary.error ?? '',
+        });
+      }
+      res.json(summary);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Write the header row + every active applicant into one tab per vertical.
+  r.post('/sheets/export', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      isAdmin(req);
+      const summary = await exportApplicantsToSheets(store, config, req.user!.id);
+      if (summary.connection_ok) {
+        await store.saveSpreadsheetConnection({
+          last_sync_at: new Date().toISOString(),
+          last_sync_status: summary.written.length ? 'ok' : 'error',
           last_sync_error: summary.error ?? '',
         });
       }

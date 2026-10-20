@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  columnIndex,
   describeSheetsError,
   normalizeSpreadsheetId,
   parseSheetLink,
+  sanitizeTabTitle,
   spreadsheetUrl,
 } from '../src/services/sheets/googleSheets.js';
+import { APPLICANT_EXPORT_HEADER } from '../src/services/sync-spreadsheet/engine.js';
 
 const ID = '1hVKgXoxD4XrDQIey619gqlRfRtduVu5LqwzB5BmE4Bo';
 
@@ -42,5 +45,24 @@ describe('Google Sheets link helpers', () => {
     ).toBe('Sheets API is disabled');
     expect(describeSheetsError(new Error('network down'))).toBe('network down');
     expect(describeSheetsError(null)).toBe('Google Sheets request failed');
+  });
+});
+
+describe('Applicant export helpers', () => {
+  it('sanitizes tab titles that Google rejects', () => {
+    expect(sanitizeTabTitle('Tech/Leads: [A]')).toBe('Tech Leads A');
+    expect(sanitizeTabTitle('   ')).toBe('Sheet');
+    expect(sanitizeTabTitle('x'.repeat(140))).toHaveLength(100);
+  });
+
+  it('writes headers the importer and evaluation push can both read', () => {
+    const key = columnIndex(APPLICANT_EXPORT_HEADER, ['roll_number']);
+    const name = columnIndex(APPLICANT_EXPORT_HEADER, ['full_name', 'applicant_name']);
+    expect(key).toBe(0);
+    expect(name).toBe(1);
+    for (const field of ['vertical', 'completion', 'final_average', 'judge_count']) {
+      expect(columnIndex(APPLICANT_EXPORT_HEADER, [field])).not.toBeNull();
+    }
+    expect(new Set(APPLICANT_EXPORT_HEADER).size).toBe(APPLICANT_EXPORT_HEADER.length);
   });
 });

@@ -34,6 +34,13 @@ interface PullSummary {
   error?: string;
 }
 
+interface ExportSummary {
+  written: { worksheet: string; rows: number; created: boolean }[];
+  skipped: string[];
+  connection_ok: boolean;
+  error?: string;
+}
+
 export function AdminReports() {
   const { getToken } = useAuth();
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -43,6 +50,7 @@ export function AdminReports() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [syncResult, setSyncResult] = useState<{ pull: PullSummary; push: PullSummary } | null>(null);
+  const [exportResult, setExportResult] = useState<ExportSummary | null>(null);
   const [sheetId, setSheetId] = useState('');
 
   const load = useCallback(async () => {
@@ -93,6 +101,26 @@ export function AdminReports() {
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Connect failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const writeApplicants = async () => {
+    setBusy(true);
+    setError(null);
+    setSyncResult(null);
+    setExportResult(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await api<ExportSummary>('/sheets/export', { method: 'POST', token });
+      setExportResult(res);
+      const rows = res.written.reduce((n, w) => n + w.rows, 0);
+      setNotice(`Wrote ${rows} applicants to ${res.written.length} tabs.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Writing applicants failed');
     } finally {
       setBusy(false);
     }
@@ -273,6 +301,9 @@ export function AdminReports() {
               <p className="warn">No vertical has a worksheet mapped yet — pull will skip them.</p>
             )}
             <div className="btn-row">
+              <button className="btn secondary" disabled={busy} onClick={() => void writeApplicants()}>
+                Write applicants to sheet
+              </button>
               <button className="btn secondary" disabled={busy} onClick={() => void runSync('pull')}>
                 Pull applicants
               </button>
@@ -284,6 +315,27 @@ export function AdminReports() {
               </button>
             </div>
           </>
+        )}
+
+        {exportResult && (
+          <div className="mt">
+            <h4>Applicants written</h4>
+            <ul>
+              {exportResult.connection_ok === false && (
+                <li className="error-text">{exportResult.error ?? 'Not configured'}</li>
+              )}
+              {exportResult.written.map((w) => (
+                <li key={w.worksheet}>
+                  <strong>{w.worksheet}</strong>: {w.rows} applicants{w.created ? ' (tab created)' : ''}
+                </li>
+              ))}
+              {exportResult.skipped.map((s) => (
+                <li key={s} className="muted">
+                  {s}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {syncResult && (
