@@ -342,6 +342,7 @@ export const APPLICANT_EXPORT_HEADER = [
   'Individual Scores',
   'Final Average',
   'Judge Count',
+  'Preferred Vertical (Interview)',
 ];
 
 export interface ExportSummary {
@@ -372,12 +373,24 @@ export async function exportApplicantsToSheets(
   const effective: SheetsConnectionConfig = { credentialsJson: cfg.credentialsJson, spreadsheetId };
   summary.connection_ok = true;
 
-  const [verticals, panels, candidates] = await Promise.all([
+  const [verticals, panels, candidates, evaluations] = await Promise.all([
     store.listVerticals(),
     store.listPanels(),
     store.listCandidates({ admin: true }, { includeArchived: false }),
+    store.listEvaluations({ admin: true }),
   ]);
   const panelNames = new Map(panels.map((p) => [p.id, p.name]));
+  const verticalNames = new Map(verticals.map((v) => [v.id, v.name]));
+  const preferences = new Map<string, string[]>();
+  for (const e of [...evaluations].sort((a, b) => a.submitted_at.localeCompare(b.submitted_at))) {
+    if (!e.preferred_vertical_id) continue;
+    const name = verticalNames.get(e.preferred_vertical_id);
+    if (!name) continue;
+    const label = e.judge_name ? `${name} (${e.judge_name})` : name;
+    const list = preferences.get(e.candidate_id) ?? [];
+    list.push(label);
+    preferences.set(e.candidate_id, list);
+  }
   const groups = new Map<string, Candidate[]>();
   const unassigned: Candidate[] = [];
   for (const c of candidates) {
@@ -409,6 +422,7 @@ export async function exportApplicantsToSheets(
     '',
     '',
     '',
+    (preferences.get(c.id) ?? []).join(', '),
   ];
 
   const writeTab = async (
