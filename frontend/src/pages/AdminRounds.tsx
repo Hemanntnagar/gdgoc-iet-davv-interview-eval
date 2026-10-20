@@ -289,14 +289,14 @@ export function AdminRounds() {
                     </td>
                     <td>{c.weight}</td>
                     <td className="actions-cell">
-                      <div className="btn-row">
-                        <button className="btn secondary small" onClick={() => void toggleCriterion(c)}>
-                          {c.is_active ? 'Disable' : 'Enable'}
-                        </button>
-                        <button className="btn danger small" onClick={() => void deleteCriterion(c)}>
-                          Delete
-                        </button>
-                      </div>
+                      <button className="btn secondary small" onClick={() => void toggleCriterion(c)}>
+                        {c.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                    </td>
+                    <td className="actions-cell">
+                      <button className="btn danger small" onClick={() => void deleteCriterion(c)}>
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}
