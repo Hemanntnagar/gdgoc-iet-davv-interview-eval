@@ -141,8 +141,8 @@ export function AdminResults() {
             <label>Shift</label>
             <select value={shift} onChange={(e) => setShift(e.target.value)}>
               <option value="">Any</option>
-              <option value="Morning">Morning</option>
-              <option value="Evening">Evening</option>
+              <option value="Shift 1">Shift 1</option>
+              <option value="Shift 2">Shift 2</option>
             </select>
           </div>
           <div>

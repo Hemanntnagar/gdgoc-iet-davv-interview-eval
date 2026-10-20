@@ -999,6 +999,19 @@ textarea:focus {
   align-items: center;
 }
 
+/* Table action cells: keep buttons on one line and vertically centered so a
+   longer label (Enable/Disable) never wraps or shifts the row. */
+table.data td.actions-cell {
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.actions-cell .btn-row {
+  flex-wrap: nowrap;
+}
+.actions-cell .btn {
+  min-width: 5.5rem;
+}
+
 /* ---------------------------------------------------------------- tables */
 .table-wrap {
   overflow-x: auto;

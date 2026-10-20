@@ -12,7 +12,7 @@ export function AdminRounds() {
   const [criteria, setCriteria] = useState<Criterion[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [newRound, setNewRound] = useState({ name: '', allow_edit_after_submit: false });
+  const [newRound, setNewRound] = useState({ name: '', allow_edit_after_submit: true });
   const [newCriterion, setNewCriterion] = useState({
     name: '',
     description: '',
@@ -87,7 +87,7 @@ export function AdminRounds() {
           allow_edit_after_submit: newRound.allow_edit_after_submit,
         }),
       });
-      setNewRound({ name: '', allow_edit_after_submit: false });
+      setNewRound({ name: '', allow_edit_after_submit: true });
       setNotice('Round created.');
       await load();
     } catch (e) {
@@ -101,6 +101,30 @@ export function AdminRounds() {
     await api(`/rounds/${id}`, { method: 'PATCH', token, body: JSON.stringify(patch) });
     setNotice('Round updated.');
     await load();
+  };
+
+  const deleteRound = async (r: Round) => {
+    const token = await getToken();
+    if (!token) return;
+    if (!window.confirm(`Delete round "${r.name}"? Its criteria will be removed permanently.`)) return;
+    try {
+      try {
+        await api(`/rounds/${r.id}`, { method: 'DELETE', token });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+        if (!window.confirm(`${e.message}\n\nDelete the round and those evaluations permanently?`)) return;
+        await api(`/rounds/${r.id}?force=true`, { method: 'DELETE', token });
+      }
+      setError(null);
+      setNotice('Round deleted.');
+      if (selected === r.id) {
+        setSelected('');
+        setCriteria([]);
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to delete round');
+    }
   };
 
   const createCriterion = async () => {
@@ -122,11 +146,38 @@ export function AdminRounds() {
   const toggleCriterion = async (c: Criterion) => {
     const token = await getToken();
     if (!token) return;
-    await api(`/criteria/${c.id}`, {
-      method: 'PATCH',
-      token,
-      body: JSON.stringify({ is_active: !c.is_active }),
-    });
+    try {
+      const res = await api<{ criterion: Criterion }>(`/criteria/${c.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ is_active: !c.is_active }),
+      });
+      setCriteria((prev) => prev.map((x) => (x.id === c.id ? res.criterion : x)));
+      setError(null);
+      setNotice(res.criterion.is_active ? 'Criterion enabled.' : 'Criterion disabled.');
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to update criterion');
+    }
+  };
+
+  const deleteCriterion = async (c: Criterion) => {
+    const token = await getToken();
+    if (!token) return;
+    if (!window.confirm(`Delete criterion "${c.name}"?`)) return;
+    try {
+      try {
+        await api(`/criteria/${c.id}`, { method: 'DELETE', token });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 409) throw e;
+        if (!window.confirm(`${e.message}\n\nDelete it and its recorded scores permanently?`)) return;
+        await api(`/criteria/${c.id}?force=true`, { method: 'DELETE', token });
+      }
+      setError(null);
+      setNotice('Criterion deleted.');
+      setCriteria((prev) => prev.filter((x) => x.id !== c.id));
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to delete criterion');
+    }
   };
 
   return (
@@ -173,6 +224,7 @@ export function AdminRounds() {
                 <SortableTh label="Open" sortKey="open" state={roundSort} />
                 <SortableTh label="Edits allowed" sortKey="edits" state={roundSort} />
                 <SortableTh label="Closes" sortKey="closes" state={roundSort} />
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -197,6 +249,11 @@ export function AdminRounds() {
                   </td>
                   <td>{r.allow_edit_after_submit ? 'Yes' : 'No'}</td>
                   <td className="muted">{r.closes_at ? `closes ${new Date(r.closes_at).toLocaleString()}` : ''}</td>
+                  <td className="actions-cell">
+                    <button className="btn danger small" onClick={() => void deleteRound(r)}>
+                      Delete
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -216,6 +273,7 @@ export function AdminRounds() {
                   <SortableTh label="Range" sortKey="range" state={criterionSort} />
                   <SortableTh label="Weight" sortKey="weight" state={criterionSort} />
                   <SortableTh label="Active" sortKey="active" state={criterionSort} />
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -229,9 +287,14 @@ export function AdminRounds() {
                       {c.min_score}–{c.max_score}
                     </td>
                     <td>{c.weight}</td>
-                    <td>
+                    <td className="actions-cell">
                       <button className="btn secondary small" onClick={() => void toggleCriterion(c)}>
                         {c.is_active ? 'Disable' : 'Enable'}
+                      </button>
+                    </td>
+                    <td className="actions-cell">
+                      <button className="btn danger small" onClick={() => void deleteCriterion(c)}>
+                        Delete
                       </button>
                     </td>
                   </tr>
@@ -248,6 +311,16 @@ export function AdminRounds() {
               <input
                 value={newCriterion.name}
                 onChange={(e) => setNewCriterion({ ...newCriterion, name: e.target.value })}
+              />
+            </div>
+            <div style={{ flex: '1 1 100%' }}>
+              <label>Description</label>
+              <textarea
+                rows={2}
+                maxLength={500}
+                value={newCriterion.description}
+                onChange={(e) => setNewCriterion({ ...newCriterion, description: e.target.value })}
+                placeholder="What judges should look for (optional)"
               />
             </div>
             <div>

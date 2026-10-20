@@ -355,6 +355,21 @@ describe('evaluations, averages and duplicates', () => {
     expect(res.body.evaluation.overall_score).toBe(7);
   });
 
+  it('stores the preferred vertical chosen during the interview', async () => {
+    const preferred = randomUUID();
+    const res = await submit(
+      s.judge1Id,
+      { [s.criteriaIds[0]]: 8, [s.criteriaIds[1]]: 6 },
+      randomUUID(),
+      { preferred_vertical_id: preferred },
+    );
+    expect(res.status).toBe(201);
+    expect(res.body.evaluation.preferred_vertical_id).toBe(preferred);
+    const mine = await request(app).get('/api/evaluations/mine').set(auth(s.judge1Id));
+    const row = mine.body.evaluations.find((e: any) => e.id === res.body.evaluation.id);
+    expect(row.preferred_vertical_id).toBe(preferred);
+  });
+
   it('rejects out-of-range scores', async () => {
     const res = await submit(s.judge1Id, { [s.criteriaIds[0]]: 99, [s.criteriaIds[1]]: 5 });
     expect(res.status).toBe(400);
@@ -711,5 +726,143 @@ describe('round creation', () => {
   it('rejects round creation by a judge', async () => {
     const res = await request(app).post('/api/rounds').set(auth(s.judge1Id)).send({ name: 'Nope' });
     expect(res.status).toBe(403);
+  });
+});
+
+describe('round deletion', () => {
+  let app: ReturnType<typeof makeApp>['app'];
+  let store: MemoryStore;
+  let s: Seed;
+  beforeEach(async () => {
+    ({ app, store } = makeApp());
+    s = await seed(store);
+  });
+
+  it('deletes a round and its criteria when it has no evaluations', async () => {
+    const res = await request(app).delete(`/api/rounds/${s.freeRoundId}`).set(auth(s.adminId));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deleted: true, evaluations: 0 });
+    expect(await store.getRound(s.freeRoundId)).toBeNull();
+    expect(await store.listCriteria(s.freeRoundId)).toHaveLength(0);
+  });
+
+  it('refuses to delete an evaluated round unless forced', async () => {
+    await store.addPanelMember(s.panelId, s.judge1Id, s.adminId);
+    const evaluation = await request(app)
+      .post('/api/evaluations')
+      .set(auth(s.judge1Id))
+      .send({
+        id: randomUUID(),
+        candidate_id: s.candidateId,
+        round_id: s.roundId,
+        feedback: 'Solid',
+        scores: { [s.criteriaIds[0]]: 8, [s.criteriaIds[1]]: 7 },
+      });
+    expect(evaluation.status).toBe(201);
+
+    const blocked = await request(app).delete(`/api/rounds/${s.roundId}`).set(auth(s.adminId));
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe('round_has_evaluations');
+    expect(await store.getRound(s.roundId)).not.toBeNull();
+
+    const forced = await request(app)
+      .delete(`/api/rounds/${s.roundId}?force=true`)
+      .set(auth(s.adminId));
+    expect(forced.status).toBe(200);
+    expect(forced.body.evaluations).toBe(1);
+    expect(await store.getRound(s.roundId)).toBeNull();
+  });
+
+  it('rejects deletion by a judge', async () => {
+    const res = await request(app).delete(`/api/rounds/${s.freeRoundId}`).set(auth(s.judge1Id));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for an unknown round', async () => {
+    const res = await request(app).delete(`/api/rounds/${randomUUID()}`).set(auth(s.adminId));
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('criterion updates', () => {
+  let app: ReturnType<typeof makeApp>['app'];
+  let store: MemoryStore;
+  let s: Seed;
+  beforeEach(async () => {
+    ({ app, store } = makeApp());
+    s = await seed(store);
+  });
+
+  it('toggles a criterion on and off', async () => {
+    const off = await request(app)
+      .patch(`/api/criteria/${s.criteriaIds[0]}`)
+      .set(auth(s.adminId))
+      .send({ is_active: false });
+    expect(off.status).toBe(200);
+    expect(off.body.criterion.is_active).toBe(false);
+
+    const on = await request(app)
+      .patch(`/api/criteria/${s.criteriaIds[0]}`)
+      .set(auth(s.adminId))
+      .send({ is_active: true });
+    expect(on.status).toBe(200);
+    expect(on.body.criterion.is_active).toBe(true);
+  });
+
+  it('creates a criterion with a description', async () => {
+    const res = await request(app)
+      .post(`/api/rounds/${s.roundId}/criteria`)
+      .set(auth(s.adminId))
+      .send({ name: 'Ownership', description: 'Takes charge of their work', max_score: 5 });
+    expect(res.status).toBe(201);
+    expect(res.body.criterion.description).toBe('Takes charge of their work');
+  });
+
+  it('deletes an unused criterion', async () => {
+    const res = await request(app).delete(`/api/criteria/${s.criteriaIds[0]}`).set(auth(s.adminId));
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ deleted: true, scores: 0 });
+    const remaining = await store.listCriteria(s.roundId);
+    expect(remaining.map((c) => c.id)).toEqual([s.criteriaIds[1]]);
+  });
+
+  it('refuses to delete a scored criterion unless forced', async () => {
+    await store.addPanelMember(s.panelId, s.judge1Id, s.adminId);
+    const submitted = await request(app)
+      .post('/api/evaluations')
+      .set(auth(s.judge1Id))
+      .send({
+        id: randomUUID(),
+        candidate_id: s.candidateId,
+        round_id: s.roundId,
+        feedback: 'Solid',
+        scores: { [s.criteriaIds[0]]: 8, [s.criteriaIds[1]]: 7 },
+      });
+    expect(submitted.status).toBe(201);
+    const evaluationId = submitted.body.evaluation.id;
+
+    const blocked = await request(app)
+      .delete(`/api/criteria/${s.criteriaIds[0]}`)
+      .set(auth(s.adminId));
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.code).toBe('criterion_has_scores');
+
+    const forced = await request(app)
+      .delete(`/api/criteria/${s.criteriaIds[0]}?force=true`)
+      .set(auth(s.adminId));
+    expect(forced.status).toBe(200);
+    expect(forced.body.scores).toBe(1);
+    const evaluation = await store.getEvaluation(evaluationId);
+    expect(evaluation?.scores.map((x) => x.criterion_id)).toEqual([s.criteriaIds[1]]);
+  });
+
+  it('rejects criterion deletion by a judge', async () => {
+    const res = await request(app).delete(`/api/criteria/${s.criteriaIds[0]}`).set(auth(s.judge1Id));
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for an unknown criterion', async () => {
+    const res = await request(app).delete(`/api/criteria/${randomUUID()}`).set(auth(s.adminId));
+    expect(res.status).toBe(404);
   });
 });

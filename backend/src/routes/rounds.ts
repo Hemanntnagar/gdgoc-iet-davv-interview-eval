@@ -89,6 +89,33 @@ export function roundRoutes(store: Store): Router {
     }
   });
 
+  r.delete('/rounds/:id', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      isAdmin(req);
+      const round = await store.getRound(req.params.id);
+      if (!round) throw new HttpError(404, 'not_found', 'Round not found');
+      const force = req.query.force === 'true' || req.query.force === '1';
+      const result = await store.deleteRound(round.id, force);
+      if (!result.deleted) {
+        throw new HttpError(
+          409,
+          'round_has_evaluations',
+          `Round "${round.name}" has ${result.evaluations} evaluation(s). Confirm force deletion to remove them too.`,
+        );
+      }
+      await store.audit({
+        actor_id: req.user!.id,
+        action: 'round_deleted',
+        entity_type: 'evaluation_round',
+        entity_id: round.id,
+        details: { name: round.name, evaluations: result.evaluations },
+      });
+      res.json({ deleted: true, evaluations: result.evaluations });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   r.post('/rounds/:id/criteria', requireAuth, async (req: AuthedRequest, res, next) => {
     try {
       isAdmin(req);
@@ -128,6 +155,34 @@ export function roundRoutes(store: Store): Router {
         details: parsed.data as Record<string, unknown>,
       });
       res.json({ criterion });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  r.delete('/criteria/:id', requireAuth, async (req: AuthedRequest, res, next) => {
+    try {
+      isAdmin(req);
+      const force = req.query.force === 'true' || req.query.force === '1';
+      const result = await store.deleteCriterion(req.params.id, force);
+      if (!result.deleted && result.scores === 0) {
+        throw new HttpError(404, 'not_found', 'Criterion not found');
+      }
+      if (!result.deleted) {
+        throw new HttpError(
+          409,
+          'criterion_has_scores',
+          `This criterion has ${result.scores} recorded score(s). Confirm force deletion to remove them too.`,
+        );
+      }
+      await store.audit({
+        actor_id: req.user!.id,
+        action: 'criterion_deleted',
+        entity_type: 'criterion',
+        entity_id: req.params.id,
+        details: { scores: result.scores },
+      });
+      res.json({ deleted: true, scores: result.scores });
     } catch (e) {
       next(e);
     }

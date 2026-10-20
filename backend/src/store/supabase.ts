@@ -556,6 +556,26 @@ export class SupabaseStore implements Store {
     if (error) throw new Error(`updateRound: ${error.message}`);
     return (data as Round) ?? null;
   }
+  async deleteRound(id: string, force = false): Promise<{ deleted: boolean; evaluations: number }> {
+    const existing = await this.sb.from('evaluation_rounds').select('id').eq('id', id).maybeSingle();
+    if (existing.error) throw new Error(`deleteRound: ${existing.error.message}`);
+    if (!existing.data) return { deleted: false, evaluations: 0 };
+    const counted = await this.sb
+      .from('evaluations')
+      .select('id', { count: 'exact', head: true })
+      .eq('round_id', id);
+    if (counted.error) throw new Error(`deleteRound(evaluations): ${counted.error.message}`);
+    const evaluations = counted.count ?? 0;
+    if (evaluations > 0 && !force) return { deleted: false, evaluations };
+    if (evaluations > 0) {
+      const deleted = await this.sb.from('evaluations').delete().eq('round_id', id);
+      if (deleted.error) throw new Error(`deleteRound(evaluations): ${deleted.error.message}`);
+    }
+    const { error } = await this.sb.from('evaluation_rounds').delete().eq('id', id);
+    if (error) throw new Error(`deleteRound: ${error.message}`);
+    return { deleted: true, evaluations };
+  }
+
   async listCriteria(roundId: string): Promise<Criterion[]> {
     return unwrap(
       await this.sb
@@ -581,6 +601,22 @@ export class SupabaseStore implements Store {
       .maybeSingle();
     if (error) throw new Error(`updateCriterion: ${error.message}`);
     return (data as Criterion) ?? null;
+  }
+
+  async deleteCriterion(id: string, force = false): Promise<{ deleted: boolean; scores: number }> {
+    const existing = await this.sb.from('criteria').select('id').eq('id', id).maybeSingle();
+    if (existing.error) throw new Error(`deleteCriterion: ${existing.error.message}`);
+    if (!existing.data) return { deleted: false, scores: 0 };
+    const counted = await this.sb
+      .from('criterion_scores')
+      .select('evaluation_id', { count: 'exact', head: true })
+      .eq('criterion_id', id);
+    if (counted.error) throw new Error(`deleteCriterion(scores): ${counted.error.message}`);
+    const scores = counted.count ?? 0;
+    if (scores > 0 && !force) return { deleted: false, scores };
+    const { error } = await this.sb.from('criteria').delete().eq('id', id);
+    if (error) throw new Error(`deleteCriterion: ${error.message}`);
+    return { deleted: true, scores };
   }
 
   // ---- evaluations ---------------------------------------------------------
@@ -637,6 +673,23 @@ export class SupabaseStore implements Store {
       const full = await this.getEvaluation(r.id);
       if (full) out.push(full);
     }
+    if (out.length === 0) return out;
+    const candidateIds = [...new Set(out.map((e) => e.candidate_id))];
+    const roundIds = [...new Set(out.map((e) => e.round_id))];
+    const [candidates, rounds] = await Promise.all([
+      this.sb.from('candidates').select('id, full_name').in('id', candidateIds),
+      this.sb.from('evaluation_rounds').select('id, name').in('id', roundIds),
+    ]);
+    const candidateNames = new Map(
+      (unwrap(candidates, 'listEvaluations candidates') as any[]).map((c) => [c.id, c.full_name]),
+    );
+    const roundNames = new Map(
+      (unwrap(rounds, 'listEvaluations rounds') as any[]).map((r) => [r.id, r.name]),
+    );
+    for (const e of out) {
+      e.candidate_name = candidateNames.get(e.candidate_id) ?? undefined;
+      e.round_name = roundNames.get(e.round_id) ?? undefined;
+    }
     return out;
   }
 
@@ -671,6 +724,8 @@ export class SupabaseStore implements Store {
           feedback: input.feedback,
           overall_score: computed.overall_score,
           scores: computed.scores,
+          preferred_vertical_id:
+            input.preferred_vertical_id === undefined ? existing.preferred_vertical_id : input.preferred_vertical_id,
         });
       }
       return { status: 'ok', evaluation: existing, idempotent: true };
@@ -693,6 +748,10 @@ export class SupabaseStore implements Store {
           feedback: input.feedback,
           overall_score: computed.overall_score,
           scores: computed.scores,
+          preferred_vertical_id:
+            input.preferred_vertical_id === undefined
+              ? official.preferred_vertical_id
+              : input.preferred_vertical_id,
         });
       }
       return { status: 'duplicate', existing: official };
@@ -707,6 +766,7 @@ export class SupabaseStore implements Store {
       status: 'submitted',
       overall_score: computed.overall_score,
       feedback: input.feedback,
+      preferred_vertical_id: input.preferred_vertical_id ?? null,
       client_created_at: input.client_created_at ?? null,
     });
     if (error) {
@@ -723,7 +783,7 @@ export class SupabaseStore implements Store {
           evaluation_id: input.id,
           criterion_id: s.criterion_id,
           score: s.score,
-          feedback: s.feedback ?? null,
+          feedback: s.feedback ?? '',
         })),
       );
       if (scoreErr) return { status: 'error', message: `Failed to save scores: ${scoreErr.message}` };
@@ -735,7 +795,12 @@ export class SupabaseStore implements Store {
   async updateEvaluation(
     id: string,
     judgeId: string,
-    patch: { feedback: string; overall_score: number | null; scores: CriterionScore[] },
+    patch: {
+      feedback: string;
+      overall_score: number | null;
+      scores: CriterionScore[];
+      preferred_vertical_id: string | null;
+    },
   ): Promise<SubmitOutcome> {
     const existing = await this.getEvaluation(id);
     if (!existing) return { status: 'error', message: 'Evaluation not found' };
@@ -745,6 +810,7 @@ export class SupabaseStore implements Store {
       .update({
         feedback: patch.feedback,
         overall_score: patch.overall_score,
+        preferred_vertical_id: patch.preferred_vertical_id,
         version: existing.version + 1,
       })
       .eq('id', id)
@@ -757,7 +823,7 @@ export class SupabaseStore implements Store {
           evaluation_id: id,
           criterion_id: s.criterion_id,
           score: s.score,
-          feedback: s.feedback ?? null,
+          feedback: s.feedback ?? '',
         })),
       );
     }

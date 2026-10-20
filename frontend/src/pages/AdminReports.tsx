@@ -35,6 +35,13 @@ interface PullSummary {
   error?: string;
 }
 
+interface ExportSummary {
+  written: { worksheet: string; rows: number; created: boolean }[];
+  skipped: string[];
+  connection_ok: boolean;
+  error?: string;
+}
+
 export function AdminReports() {
   const { getToken } = useAuth();
   const [overview, setOverview] = useState<Overview | null>(null);
@@ -44,6 +51,7 @@ export function AdminReports() {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [syncResult, setSyncResult] = useState<{ pull: PullSummary; push: PullSummary } | null>(null);
+  const [exportResult, setExportResult] = useState<ExportSummary | null>(null);
   const [sheetId, setSheetId] = useState('');
 
   const load = useCallback(async () => {
@@ -94,6 +102,26 @@ export function AdminReports() {
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Connect failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const writeApplicants = async () => {
+    setBusy(true);
+    setError(null);
+    setSyncResult(null);
+    setExportResult(null);
+    try {
+      const token = await getToken();
+      if (!token) return;
+      const res = await api<ExportSummary>('/sheets/export', { method: 'POST', token });
+      setExportResult(res);
+      const rows = res.written.reduce((n, w) => n + w.rows, 0);
+      setNotice(`Wrote ${rows} applicants to ${res.written.length} tabs.`);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Writing applicants failed');
     } finally {
       setBusy(false);
     }
@@ -239,15 +267,15 @@ export function AdminReports() {
         {!status?.configured ? (
           <>
             <p className="muted">
-              Server-side Google Sheets sync is not configured yet. Provide the spreadsheet ID
-              (from its URL) and make sure the server has service-account credentials.
+              Google Sheets sync runs server-side with a service account. Paste the spreadsheet
+              link (or just its ID) — the sheet must be shared with the service-account email.
             </p>
             <label className="field">
-              <span>Spreadsheet ID</span>
+              <span>Spreadsheet link or ID</span>
               <input
                 value={sheetId}
                 onChange={(e) => setSheetId(e.target.value)}
-                placeholder="1AbC…xyz (the /d/ part of the URL)"
+                placeholder="https://docs.google.com/spreadsheets/d/…/edit"
               />
             </label>
             <button className="btn" disabled={busy || !sheetId.trim()} onClick={() => void connect()}>
@@ -277,6 +305,9 @@ export function AdminReports() {
               <p className="warn">No vertical has a worksheet mapped yet — pull will skip them.</p>
             )}
             <div className="btn-row">
+              <button className="btn secondary" disabled={busy} onClick={() => void writeApplicants()}>
+                Write applicants to sheet
+              </button>
               <button className="btn secondary" disabled={busy} onClick={() => void runSync('pull')}>
                 Pull applicants
               </button>
@@ -288,6 +319,27 @@ export function AdminReports() {
               </button>
             </div>
           </>
+        )}
+
+        {exportResult && (
+          <div className="mt">
+            <h4>Applicants written</h4>
+            <ul>
+              {exportResult.connection_ok === false && (
+                <li className="error-text">{exportResult.error ?? 'Not configured'}</li>
+              )}
+              {exportResult.written.map((w) => (
+                <li key={w.worksheet}>
+                  <strong>{w.worksheet}</strong>: {w.rows} applicants{w.created ? ' (tab created)' : ''}
+                </li>
+              ))}
+              {exportResult.skipped.map((s) => (
+                <li key={s} className="muted">
+                  {s}
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {syncResult && (

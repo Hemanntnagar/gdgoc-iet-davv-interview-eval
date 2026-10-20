@@ -102,6 +102,7 @@ export class SyncEngine {
                 overall_score: item.overall_score,
                 scores: item.scores,
                 criterion_feedbacks: item.criterion_feedbacks ?? {},
+                preferred_vertical_id: item.preferred_vertical_id ?? null,
                 client_created_at: item.client_created_at,
                 replace_existing: true,
               })),

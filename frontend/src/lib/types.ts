@@ -101,6 +101,8 @@ export interface OutboxItem {
   scores: Record<string, number>;
   /** addendum: per-criterion written feedback */
   criterion_feedbacks?: Record<string, string>;
+  /** Judge recommendation after the interview */
+  preferred_vertical_id?: string | null;
   client_created_at: string;
   status: 'pending' | 'syncing' | 'synced' | 'conflict' | 'error';
   last_error?: string;
@@ -157,6 +159,7 @@ export interface EvaluationWithScores {
   round_id: string;
   overall_score: number | null;
   feedback: string;
+  preferred_vertical_id?: string | null;
   version: number;
   status: string;
   submitted_at: string;

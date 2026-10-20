@@ -14,6 +14,7 @@ export interface SheetsConnectionConfig {
 export interface SheetTabInfo {
   title: string;
   index: number;
+  sheetId: number;
   rowCount: number;
   columnCount: number;
 }
@@ -43,9 +44,49 @@ export function isConfigured(cfg: Partial<SheetsConnectionConfig>): boolean {
   return Boolean(cfg.credentialsJson && cfg.spreadsheetId);
 }
 
+/** Human-readable reason for a failed Google API call (surfaced to admins). */
+export function describeSheetsError(e: unknown): string {
+  const err = e as {
+    message?: string;
+    response?: { data?: { error?: { message?: string } } };
+  } | null;
+  return err?.response?.data?.error?.message || err?.message || 'Google Sheets request failed';
+}
+
 /** Spreadsheet URL built only from the stored ID (no fabrication). */
 export function spreadsheetUrl(spreadsheetId: string): string {
   return `https://docs.google.com/spreadsheets/d/${spreadsheetId}`;
+}
+
+export interface SheetLinkRef {
+  /** Set only when the value is a Google Sheets URL (or a bare file ID). */
+  spreadsheetId: string | null;
+  /** Tab id from the URL's `gid` parameter, when present. */
+  gid: number | null;
+}
+
+const SHEET_URL_RE = /docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)/i;
+const SHEET_ID_RE = /^[A-Za-z0-9_-]{16,}$/;
+
+/**
+ * Accepts a full Google Sheets link, a bare file ID, or a plain tab name.
+ * Plain tab names return `{ spreadsheetId: null }` so callers keep using the
+ * connected spreadsheet.
+ */
+export function parseSheetLink(value: string): SheetLinkRef {
+  const raw = String(value ?? '').trim();
+  if (!raw) return { spreadsheetId: null, gid: null };
+  const fromUrl = raw.match(SHEET_URL_RE);
+  if (fromUrl) {
+    const gid = raw.match(/[#?&]gid=(\d+)/);
+    return { spreadsheetId: fromUrl[1], gid: gid ? Number(gid[1]) : null };
+  }
+  if (SHEET_ID_RE.test(raw) && !/\s/.test(raw)) return { spreadsheetId: raw, gid: null };
+  return { spreadsheetId: null, gid: null };
+}
+
+export function normalizeSpreadsheetId(value: string): string {
+  return parseSheetLink(value).spreadsheetId ?? String(value ?? '').trim();
 }
 
 export async function listTabs(cfg: SheetsConnectionConfig): Promise<SheetTabInfo[]> {
@@ -57,6 +98,7 @@ export async function listTabs(cfg: SheetsConnectionConfig): Promise<SheetTabInf
   return (data.sheets ?? []).map((s, i) => ({
     title: s.properties?.title ?? '',
     index: s.properties?.index ?? i,
+    sheetId: s.properties?.sheetId ?? i,
     rowCount: s.properties?.gridProperties?.rowCount ?? 0,
     columnCount: s.properties?.gridProperties?.columnCount ?? 0,
   }));
@@ -115,6 +157,49 @@ export async function appendRow(
     valueInputOption: 'RAW',
     insertDataOption: 'INSERT_ROWS',
     requestBody: { values: [row] },
+  });
+}
+
+/** Tab titles cannot contain these characters and are capped at 100 chars. */
+export function sanitizeTabTitle(value: string): string {
+  const cleaned = String(value ?? '')
+    .replace(/[[\]:*?/\\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 100);
+  return cleaned || 'Sheet';
+}
+
+/** Create the tab when missing; returns true when it was created. */
+export async function ensureTab(cfg: SheetsConnectionConfig, title: string): Promise<boolean> {
+  const sheets = makeClient(cfg.credentialsJson);
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId: cfg.spreadsheetId,
+    fields: 'sheets.properties(title)',
+  });
+  const exists = (meta.data.sheets ?? []).some((s) => s.properties?.title === title);
+  if (exists) return false;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: cfg.spreadsheetId,
+    requestBody: { requests: [{ addSheet: { properties: { title } } }] },
+  });
+  return true;
+}
+
+/** Replace a tab's values starting at A1 (header row included). */
+export async function overwriteTab(
+  cfg: SheetsConnectionConfig,
+  tabTitle: string,
+  values: unknown[][],
+): Promise<void> {
+  const sheets = makeClient(cfg.credentialsJson);
+  const range = `'${tabTitle.replace(/'/g, "''")}'`;
+  await sheets.spreadsheets.values.clear({ spreadsheetId: cfg.spreadsheetId, range });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: cfg.spreadsheetId,
+    range: `${range}!A1`,
+    valueInputOption: 'RAW',
+    requestBody: { values },
   });
 }
 

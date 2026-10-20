@@ -7,7 +7,7 @@ import { useOnline } from '../lib/net';
 import { useSync } from '../lib/syncContext';
 import { PageHeader } from '../components/PageHeader';
 import { SortableTh, useSort } from '../components/Sortable';
-import type { EvaluationWithScores, OutboxItem } from '../lib/types';
+import type { EvaluationWithScores, OutboxItem, Vertical } from '../lib/types';
 
 const statusBadge = (s: OutboxItem['status']) => {
   switch (s) {
@@ -30,6 +30,7 @@ export function MyEvaluations() {
   const { refresh } = useSync();
   const [server, setServer] = useState<EvaluationWithScores[] | null>(null);
   const [local, setLocal] = useState<OutboxItem[]>([]);
+  const [verticals, setVerticals] = useState<Vertical[]>([]);
 
   const getSortValue = useCallback((e: EvaluationWithScores, key: string): unknown => {
     switch (key) {
@@ -48,6 +49,14 @@ export function MyEvaluations() {
     }
   }, []);
   const sort = useSort(server ?? [], getSortValue, 'submitted', 'desc');
+
+  useEffect(() => {
+    if (!online) return;
+    void getToken()
+      .then((token) => (token ? api<{ verticals: Vertical[] }>('/verticals', { token }) : null))
+      .then((r) => r && setVerticals(r.verticals))
+      .catch(() => undefined);
+  }, [online, getToken]);
 
   useEffect(() => {
     void (async () => {

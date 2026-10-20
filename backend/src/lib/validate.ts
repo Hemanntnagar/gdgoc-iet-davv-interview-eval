@@ -77,6 +77,7 @@ export const evaluationSubmitSchema = z.object({
   scores: z.record(z.number()).default({}),
   // addendum: per-criterion written feedback
   criterion_feedbacks: z.record(z.string().max(2000)).default({}),
+  preferred_vertical_id: uuidSchema.nullable().optional(),
   client_created_at: z.string().datetime().nullable().optional(),
   // Sync hint: replace own existing official evaluation when the round allows edits
   replace_existing: z.boolean().optional(),
@@ -91,6 +92,7 @@ export const evaluationPatchSchema = z.object({
   overall_score: z.number().nullable().optional(),
   scores: z.record(z.number()).default({}),
   criterion_feedbacks: z.record(z.string().max(2000)).default({}),
+  preferred_vertical_id: uuidSchema.nullable().optional(),
 });
 
 export const panelCreateSchema = z.object({
