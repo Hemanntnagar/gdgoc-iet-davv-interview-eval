@@ -1,4 +1,5 @@
-import { columnIndex, findRowByKey, readTab, spreadsheetUrl, writeBatch, appendRow, isConfigured, SheetsUnavailableError } from '../sheets/googleSheets.js';
+import { columnIndex, findRowByKey, readTab, spreadsheetUrl, writeBatch, appendRow, isConfigured, listTabs, parseSheetLink, SheetsUnavailableError } from '../sheets/googleSheets.js';
+import type { SheetsConnectionConfig } from '../sheets/googleSheets.js';
 import { COLUMN_ALIASES, normalizeHeader } from '../importer/columns.js';
 import type { AppConfig } from '../../config.js';
 import type { Store, ResultRow, Candidate, SpreadsheetSyncItem } from '../../store/types.js';
@@ -29,6 +30,24 @@ function sheetsConfig(store: Store, config: AppConfig): { credentialsJson: strin
   return { credentialsJson: config.googleSheetsCredentials, spreadsheetId: config.defaultSpreadsheetId };
 }
 
+/**
+ * A vertical's worksheet may be a tab name or a Google Sheets link. Links can
+ * point at a different spreadsheet/tab (`#gid=…`), so resolve them to the
+ * actual tab title before reading or writing.
+ */
+async function resolveWorksheet(
+  cfg: SheetsConnectionConfig,
+  worksheet: string,
+): Promise<{ reference: SheetsConnectionConfig; tabTitle: string }> {
+  const ref = parseSheetLink(worksheet);
+  if (!ref.spreadsheetId) return { reference: cfg, tabTitle: worksheet };
+  const reference = { credentialsJson: cfg.credentialsJson, spreadsheetId: ref.spreadsheetId };
+  const tabs = await listTabs(reference);
+  const tab = (ref.gid !== null ? tabs.find((t) => t.sheetId === ref.gid) : undefined) ?? tabs[0];
+  if (!tab) throw new SheetsUnavailableError(`spreadsheet ${ref.spreadsheetId} has no tabs`);
+  return { reference, tabTitle: tab.title };
+}
+
 export async function pullFromSheets(store: Store, config: AppConfig, actorId: string): Promise<SyncRunSummary> {
   const summary: SyncRunSummary = { pulled: [], pushed: [], skipped: [], connection_ok: false };
   const cfg = sheetsConfig(store, config);
@@ -42,13 +61,15 @@ export async function pullFromSheets(store: Store, config: AppConfig, actorId: s
   summary.connection_ok = true;
   const verticals = await store.listVerticals();
   for (const v of verticals) {
-    const tab = v.worksheet;
-    if (!tab) {
+    if (!v.worksheet) {
       summary.skipped.push(`vertical "${v.key}" has no worksheet mapped`);
       continue;
     }
+    let tab = v.worksheet;
     try {
-      const { values, revision } = await readTab(effective, tab);
+      const resolved = await resolveWorksheet(effective, v.worksheet);
+      tab = resolved.tabTitle;
+      const { values, revision } = await readTab(resolved.reference, tab);
       if (values.length < 2) {
         summary.pulled.push({ worksheet: tab, created: 0, updated: 0, skipped: 0, errors: 0 });
         continue;
@@ -210,13 +231,16 @@ export async function pushToSheets(store: Store, config: AppConfig, actorId: str
           summary.pushed.push({ id: item.id, status: 'failed', detail: 'candidate no longer exists' });
           continue;
         }
-        const tab = item.worksheet || byId.get(results.get(item.entity_id)?.vertical_id ?? '')?.worksheet || '';
-        if (!tab) {
+        const worksheet =
+          item.worksheet || byId.get(results.get(item.entity_id)?.vertical_id ?? '')?.worksheet || '';
+        if (!worksheet) {
           await store.completeSpreadsheetSync(item.id, 'failed', { error: 'no worksheet mapped for vertical' });
           summary.pushed.push({ id: item.id, status: 'failed', detail: 'no worksheet mapped' });
           continue;
         }
-        const { values } = await readTab(effective, tab);
+        const resolved = await resolveWorksheet(effective, worksheet);
+        const tab = resolved.tabTitle;
+        const { values } = await readTab(resolved.reference, tab);
         const headers = (values[0] ?? []).map((h) => String(h ?? ''));
         const keyCol = columnIndex(headers, APPLICANT_KEY_ALIASES);
         const nameCol = columnIndex(headers, ['full_name', 'applicant_name', 'name']);
@@ -241,9 +265,9 @@ export async function pushToSheets(store: Store, config: AppConfig, actorId: str
         } else {
           // Append: header + values for this applicant.
           const full = [EVAL_HEADER.map((_, i) => row[i])];
-          await appendRow(effective, tab, full[0]);
+          await appendRow(resolved.reference, tab, full[0]);
         }
-        if (updates.length) await writeBatch(effective, updates);
+        if (updates.length) await writeBatch(resolved.reference, updates);
         await store.completeSpreadsheetSync(item.id, 'done', {});
         summary.pushed.push({ id: item.id, status: 'done' });
         await store.logSpreadsheetSync({

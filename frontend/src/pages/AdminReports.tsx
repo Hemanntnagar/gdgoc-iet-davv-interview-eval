@@ -235,15 +235,15 @@ export function AdminReports() {
         {!status?.configured ? (
           <>
             <p className="muted">
-              Server-side Google Sheets sync is not configured yet. Provide the spreadsheet ID
-              (from its URL) and make sure the server has service-account credentials.
+              Google Sheets sync runs server-side with a service account. Paste the spreadsheet
+              link (or just its ID) — the sheet must be shared with the service-account email.
             </p>
             <label className="field">
-              <span>Spreadsheet ID</span>
+              <span>Spreadsheet link or ID</span>
               <input
                 value={sheetId}
                 onChange={(e) => setSheetId(e.target.value)}
-                placeholder="1AbC…xyz (the /d/ part of the URL)"
+                placeholder="https://docs.google.com/spreadsheets/d/…/edit"
               />
             </label>
             <button className="btn" disabled={busy || !sheetId.trim()} onClick={() => void connect()}>

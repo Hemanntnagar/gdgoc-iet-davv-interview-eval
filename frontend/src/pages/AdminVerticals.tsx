@@ -158,7 +158,8 @@ export function AdminVerticals() {
                   ) : (
                     <input
                       value={v.worksheet ?? ''}
-                      placeholder="worksheet name"
+                      placeholder="tab name or sheet link"
+                      title="A tab name in the connected spreadsheet, or a full Google Sheets link (optionally with #gid=…)"
                       disabled={busy}
                       onChange={(e) =>
                         setVerticals((list) =>

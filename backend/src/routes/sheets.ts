@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { badRequest, HttpError } from '../lib/errors.js';
 import { requireAuth, type AuthedRequest } from '../lib/auth.js';
 import { connectionStatus, pullFromSheets, pushToSheets } from '../services/sync-spreadsheet/engine.js';
-import { listTabs, spreadsheetUrl, SheetsUnavailableError } from '../services/sheets/googleSheets.js';
+import { describeSheetsError, listTabs, normalizeSpreadsheetId, spreadsheetUrl } from '../services/sheets/googleSheets.js';
 import type { AppConfig } from '../config.js';
 import type { Store } from '../store/types.js';
 
@@ -37,7 +37,14 @@ export function sheetSyncRoutes(store: Store, config: AppConfig): Router {
   r.put('/sheets/connection', requireAuth, async (req: AuthedRequest, res, next) => {
     try {
       isAdmin(req);
-      const parsed = connectionSchema.safeParse(req.body);
+      // Accept a full Google Sheets link as well as a bare file ID.
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const parsed = connectionSchema.safeParse({
+        ...body,
+        spreadsheet_id: normalizeSpreadsheetId(
+          typeof body.spreadsheet_id === 'string' ? body.spreadsheet_id : '',
+        ),
+      });
       if (!parsed.success) throw badRequest('Invalid request', parsed.error.flatten());
       if (!config.googleSheetsCredentials) {
         throw badRequest('Server is missing GOOGLE_SHEETS_CREDENTIALS — connection cannot be activated');
@@ -80,7 +87,7 @@ export function sheetSyncRoutes(store: Store, config: AppConfig): Router {
       });
       res.json({ tabs });
     } catch (e) {
-      next(e instanceof SheetsUnavailableError ? badRequest(e.message) : e);
+      next(e instanceof HttpError ? e : badRequest(describeSheetsError(e)));
     }
   });
 
