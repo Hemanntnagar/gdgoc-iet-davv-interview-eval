@@ -673,6 +673,23 @@ export class SupabaseStore implements Store {
       const full = await this.getEvaluation(r.id);
       if (full) out.push(full);
     }
+    if (out.length === 0) return out;
+    const candidateIds = [...new Set(out.map((e) => e.candidate_id))];
+    const roundIds = [...new Set(out.map((e) => e.round_id))];
+    const [candidates, rounds] = await Promise.all([
+      this.sb.from('candidates').select('id, full_name').in('id', candidateIds),
+      this.sb.from('evaluation_rounds').select('id, name').in('id', roundIds),
+    ]);
+    const candidateNames = new Map(
+      (unwrap(candidates, 'listEvaluations candidates') as any[]).map((c) => [c.id, c.full_name]),
+    );
+    const roundNames = new Map(
+      (unwrap(rounds, 'listEvaluations rounds') as any[]).map((r) => [r.id, r.name]),
+    );
+    for (const e of out) {
+      e.candidate_name = candidateNames.get(e.candidate_id) ?? undefined;
+      e.round_name = roundNames.get(e.round_id) ?? undefined;
+    }
     return out;
   }
 
