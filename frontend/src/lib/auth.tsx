@@ -1,7 +1,13 @@
 import type { Session, SupabaseClient } from '@supabase/supabase-js';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { api, ApiError } from './api';
-import { DEMO_MODE, OFFLINE_SESSION_HOURS, SUPABASE_ANON_KEY, SUPABASE_URL } from './config';
+import {
+  DEMO_MODE,
+  OFFLINE_SESSION_HOURS,
+  SUPABASE_ANON_KEY,
+  SUPABASE_CONFIGURED,
+  SUPABASE_URL,
+} from './config';
 import {
   getOfflineSession,
   saveOfflineSession,
@@ -53,11 +59,32 @@ const AuthContext = createContext<AuthState | null>(null);
 let sb: SupabaseClient | null = null;
 export function supabase(): SupabaseClient {
   if (!sb) {
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      throw new Error('Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.');
+    }
     sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       auth: { persistSession: true, autoRefreshToken: true, storageKey: 'gdgoc-auth' },
     });
   }
   return sb;
+}
+
+async function restoreOfflineSession(
+  setOfflineSession: (value: OfflineSession | null) => void,
+  setProfile: (value: Profile | null) => void,
+  setStatus: (value: AuthState['status']) => void,
+): Promise<boolean> {
+  const off = await getOfflineSession();
+  if (!off) return false;
+  setOfflineSession(off);
+  setProfile({
+    id: off.user_id,
+    email: off.email,
+    full_name: off.full_name,
+    role: off.role,
+  });
+  setStatus('offline');
+  return true;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -102,66 +129,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem(DEMO_TOKEN_KEY);
         }
       }
-      const off = await getOfflineSession();
-      if (off) {
-        setOfflineSession(off);
-        setProfile({
-          id: off.user_id,
-          email: off.email,
-          full_name: off.full_name,
-          role: off.role,
-        });
-        setStatus('offline');
-        return;
-      }
+      if (await restoreOfflineSession(setOfflineSession, setProfile, setStatus)) return;
       setStatus('signed_out');
       return;
     }
 
-    const sbClient = supabase();
-    const { data } = await sbClient.auth.getSession();
-    const s = data.session;
-    setSession(s);
-    if (s) {
-      try {
-        await loadMe(s.access_token);
-        setStatus('online');
-        setOfflineSession(await getOfflineSession());
-        return;
-      } catch {
-        // Token valid but backend unreachable — fall back to offline session.
-        const off = await getOfflineSession();
-        if (off) {
-          setOfflineSession(off);
-          setProfile({
-            id: off.user_id,
-            email: off.email,
-            full_name: off.full_name,
-            role: off.role,
-          });
-          setStatus('offline');
-          return;
-        }
-      }
-    }
-    const off = await getOfflineSession();
-    if (off) {
-      setOfflineSession(off);
-      setProfile({
-        id: off.user_id,
-        email: off.email,
-        full_name: off.full_name,
-        role: off.role,
-      });
-      setStatus('offline');
+    // Missing VITE_SUPABASE_* (typical Vercel preview) must not call createClient —
+    // that throws and leaves a blank page.
+    if (!SUPABASE_CONFIGURED) {
+      if (await restoreOfflineSession(setOfflineSession, setProfile, setStatus)) return;
+      setStatus('signed_out');
       return;
     }
-    setStatus('signed_out');
+
+    try {
+      const sbClient = supabase();
+      const { data } = await sbClient.auth.getSession();
+      const s = data.session;
+      setSession(s);
+      if (s) {
+        try {
+          await loadMe(s.access_token);
+          setStatus('online');
+          setOfflineSession(await getOfflineSession());
+          return;
+        } catch {
+          // Token valid but backend unreachable — fall back to offline session.
+          if (await restoreOfflineSession(setOfflineSession, setProfile, setStatus)) return;
+        }
+      }
+      if (await restoreOfflineSession(setOfflineSession, setProfile, setStatus)) return;
+      setStatus('signed_out');
+    } catch {
+      if (await restoreOfflineSession(setOfflineSession, setProfile, setStatus)) return;
+      setStatus('signed_out');
+    }
   }, [applyDemoSession, loadMe]);
 
   useEffect(() => {
     void bootstrap();
-    if (DEMO_MODE) return;
+    if (DEMO_MODE || !SUPABASE_CONFIGURED) return;
     const { data: sub } = supabase().auth.onAuthStateChange((_event, s) => {
       setSession(s);
     });
@@ -260,6 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const getToken = useCallback(async () => {
     if (DEMO_MODE) return localStorage.getItem(DEMO_TOKEN_KEY);
+    if (!SUPABASE_CONFIGURED) return null;
     const { data } = await supabase().auth.getSession();
     return data.session?.access_token ?? null;
   }, []);
